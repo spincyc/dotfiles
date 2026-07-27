@@ -3,10 +3,26 @@
 Canonical personal instructions for AI agents. Tool-specific files must point
 here, not duplicate it. Repository-local instructions may add narrower rules.
 
+## Journal ownership
+
+Resolve the active repository from the user's task and current working tree,
+not from this guidance file's path or symlink target. A journal belongs only
+to the repository whose root directly contains its `.journal/` directory.
+
+- Read and write only the active repository's `.journal/`.
+- Run journal helpers from that repository root.
+- Keep its locks, sequences, task IDs, decisions, feedback, and timeline
+  isolated from every other repository.
+- Never use `~/git/dotfiles/.journal/` as global or fallback state. Use it only
+  when the active repository is the dotfiles checkout itself.
+- If the active repository has no `.journal/README.md`, do not search another
+  repository for one or silently create a journal. Follow local instructions
+  and continue without this workflow unless the user authorizes initialization.
+
 ## Durable repository workflow
 
-When the current repository contains `.journal/README.md`, read it before
-repository work and:
+When the active repository contains its own `.journal/README.md`, read that
+file before repository work and:
 
 1. Verify the repository, branch, HEAD, remotes, and working tree.
 2. Create an agent-instance UUID. Read journal state, queue, active tasks,
@@ -24,12 +40,14 @@ repository work and:
 7. Commit journal and attributable implementation checkpoints locally. Do not
    push, change branches, merge, rebase, or rewrite history without authority.
 
-When journal machinery is unclear or defective, publish an immutable feedback
-report with `journal.py feedback submit`. Do not repair protocol or shared
-state opportunistically. A leased maintenance task reviews feedback and
-records incorporation through an immutable decision.
+When that repository's journal machinery is unclear or defective, publish an
+immutable feedback report there with `journal.py feedback submit`. Do not
+repair protocol state opportunistically. A leased maintenance task in the
+same repository reviews feedback and records incorporation through an
+immutable decision.
 
-Run `python3 .journal/bin/journal.py validate` before journal commits.
+From the active repository root, run
+`python3 .journal/bin/journal.py validate` before journal commits.
 
 ## Collaboration
 
@@ -49,8 +67,11 @@ Be candid and evidence-oriented. Optimize for the result, not agreement.
 
 ## Dotfiles repository
 
-When working in the repository containing this file, treat it as a small
-terminal profile:
+The remaining repository and verification rules apply only when the active
+repository is the dotfiles checkout. A global symlink resolving this guidance
+into dotfiles does not make dotfiles the active repository.
+
+Treat the dotfiles repository as a small terminal profile:
 
 - `.zshrc`: interactive Zsh; Oh My Zsh is optional.
 - `.tmux.conf`: portable tmux defaults and bindings.
