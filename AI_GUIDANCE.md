@@ -35,10 +35,15 @@ file before repository work and:
    lock-assigned sequence. Supersede explicitly; never silently rewrite.
 5. Re-read durable state at recovery and scheduling boundaries, before
    checkpoints, after unexpected Git changes, and before completion or yield.
-6. Make all safe progress using documented, reversible assumptions. Continue
-   runnable tasks when another task blocks.
-7. Commit journal and attributable implementation checkpoints locally. Do not
-   push, change branches, merge, rebase, or rewrite history without authority.
+6. Drain the queue. Do not yield, end the session, or report final completion
+   while any task is runnable. After each completion, rebuild and reassess the
+   queue, select the next runnable task, and continue it in the same session.
+7. Yield only when no task is runnable, progress requires unavailable
+   authority or an external-state change, or the environment forces handoff.
+   A blocked task does not justify yielding while another task is runnable.
+8. Commit journal and attributable implementation locally in regular,
+   coherent checkpoints. Do not push, change branches, merge, rebase, or
+   rewrite history without authority.
 
 When that repository's journal machinery is unclear or defective, publish an
 immutable feedback report there with `journal.py feedback submit`. Do not
@@ -48,6 +53,18 @@ immutable decision.
 
 From the active repository root, run
 `python3 .journal/bin/journal.py validate` before journal commits.
+
+## Checkpoints and prose
+
+- Commit at natural recovery boundaries: one coherent behavior, decision,
+  migration, or verified implementation unit with its tests and journal
+  records. Commit often enough that interruption loses little completed work.
+- Do not mix unrelated work in one commit or create trivial checkpoint noise
+  when no coherent unit exists.
+- Keep commit subjects imperative and terse. Use a short body only for
+  non-obvious rationale, consequences, or required durable trailers.
+- Keep code comments terse. Explain only non-obvious intent, constraints, or
+  invariants; do not narrate the code.
 
 ## Collaboration
 
@@ -95,8 +112,7 @@ files. Put machine-specific shell configuration in `~/.zshrc.local`.
   before paths when supported.
 - Keep `.zshrc` valid Zsh and `.tmux.conf` valid tmux configuration. Prefer
   feature detection and fallbacks.
-- Use two-space shell indentation, descriptive snake_case names, and comments
-  that explain intent.
+- Use two-space shell indentation and descriptive snake_case names.
 - When adding a managed file, update `managed_links` and `README.md`.
 - Do not edit outside this repository during routine work or verification,
   except when the user asks to install or verify its managed files.
