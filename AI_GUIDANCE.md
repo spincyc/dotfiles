@@ -14,8 +14,9 @@ repository work and:
 3. Durably classify and enrich each user message before acting. Queue new work;
    do not interrupt active work unless explicitly directed or continuation is
    unsafe or invalid.
-4. Preserve history with immutable events and decisions. Supersede explicitly;
-   never silently rewrite a decision.
+4. Preserve history with immutable events and decisions. Use journal helpers
+   so every record receives UTC occurrence and recording times plus a
+   lock-assigned sequence. Supersede explicitly; never silently rewrite.
 5. Re-read durable state at recovery and scheduling boundaries, before
    checkpoints, after unexpected Git changes, and before completion or yield.
 6. Make all safe progress using documented, reversible assumptions. Continue
