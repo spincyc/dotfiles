@@ -33,12 +33,20 @@ if [ "$mode" = update ]; then
   git -C "$repo_dir" pull --ff-only
 fi
 
-managed_files=".zshrc .tmux.conf"
+managed_links="
+.zshrc:.zshrc
+.tmux.conf:.tmux.conf
+AI_GUIDANCE.md:.codex/AGENTS.md
+AI_GUIDANCE.md:.claude/CLAUDE.md
+AI_GUIDANCE.md:.gemini/GEMINI.md
+"
 failed=0
 
-for name in $managed_files; do
-  source_path="$repo_dir/$name"
-  target_path="$HOME/$name"
+for managed_link in $managed_links; do
+  source_name=${managed_link%%:*}
+  target_name=${managed_link#*:}
+  source_path="$repo_dir/$source_name"
+  target_path="$HOME/$target_name"
 
   if [ "$mode" = check ]; then
     if [ -L "$target_path" ] &&
@@ -58,11 +66,13 @@ for name in $managed_files; do
   fi
 
   if [ -e "$target_path" ] || [ -L "$target_path" ]; then
-    mkdir -p -- "$backup_dir"
-    mv -- "$target_path" "$backup_dir/$name"
-    printf 'backup   %s -> %s\n' "$target_path" "$backup_dir/$name"
+    backup_path="$backup_dir/$target_name"
+    mkdir -p -- "$(dirname -- "$backup_path")"
+    mv -- "$target_path" "$backup_path"
+    printf 'backup   %s -> %s\n' "$target_path" "$backup_path"
   fi
 
+  mkdir -p -- "$(dirname -- "$target_path")"
   ln -s -- "$source_path" "$target_path"
   printf 'linked   %s -> %s\n' "$target_path" "$source_path"
 done

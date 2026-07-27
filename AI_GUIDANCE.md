@@ -1,11 +1,12 @@
-# AI contributor guidance
+# Global AI contributor guidance
 
-Canonical instructions for every AI agent in this repository. Tool-specific
-files must point here, not duplicate it.
+Canonical personal instructions for AI agents. Tool-specific files must point
+here, not duplicate it. Repository-local instructions may add narrower rules.
 
-## Required workflow
+## Durable repository workflow
 
-Before repository work, read [`.journal/README.md`](.journal/README.md) and:
+When the current repository contains `.journal/README.md`, read it before
+repository work and:
 
 1. Verify the repository, branch, HEAD, remotes, and working tree.
 2. Create an agent-instance UUID. Read journal state, queue, active tasks,
@@ -40,9 +41,10 @@ Be candid and evidence-oriented. Optimize for the result, not agreement.
 - Request direction when an alternative materially changes outcome, scope,
   risk, or external consequences.
 
-## Repository
+## Dotfiles repository
 
-This is a small terminal profile:
+When working in the repository containing this file, treat it as a small
+terminal profile:
 
 - `.zshrc`: interactive Zsh; Oh My Zsh is optional.
 - `.tmux.conf`: portable tmux defaults and bindings.
@@ -68,8 +70,9 @@ files. Put machine-specific shell configuration in `~/.zshrc.local`.
   feature detection and fallbacks.
 - Use two-space shell indentation, descriptive snake_case names, and comments
   that explain intent.
-- When adding a managed dotfile, update `managed_files` and `README.md`.
-- Do not edit outside the repository during routine work or verification.
+- When adding a managed file, update `managed_links` and `README.md`.
+- Do not edit outside this repository during routine work or verification,
+  except when the user asks to install or verify its managed files.
 
 ## Verification
 

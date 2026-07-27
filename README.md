@@ -65,7 +65,9 @@ files outside this repository.
 ## AI-assisted contributions
 
 [`AI_GUIDANCE.md`](AI_GUIDANCE.md) is the tool-neutral source of truth for AI
-agents working in this repository. Compatibility files expose that guidance to
+agents. The installer links it to the personal instruction locations used by
+Codex (`~/.codex/AGENTS.md`), Claude (`~/.claude/CLAUDE.md`), and Gemini
+(`~/.gemini/GEMINI.md`). Repository compatibility files also expose it to
 agents that automatically discover `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or
 GitHub Copilot instructions.
 
