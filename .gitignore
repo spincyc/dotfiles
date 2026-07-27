@@ -4,3 +4,5 @@
 *.swp
 *.swo
 .DS_Store
+.journal/.lock/
+.journal/runtime/

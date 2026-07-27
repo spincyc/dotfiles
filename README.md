@@ -61,3 +61,14 @@ loaded automatically and must not be committed.
 
 Keep credentials, SSH keys, shell history, caches, and generated completion
 files outside this repository.
+
+## AI-assisted contributions
+
+[`AI_GUIDANCE.md`](AI_GUIDANCE.md) is the tool-neutral source of truth for AI
+agents working in this repository. Compatibility files expose that guidance to
+agents that automatically discover `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or
+GitHub Copilot instructions.
+
+For an agent that does not automatically load repository instructions, ask it
+to read `AI_GUIDANCE.md` before making changes. Keep shared guidance in that
+file so the compatibility entry points do not drift apart.
