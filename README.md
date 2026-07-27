@@ -71,6 +71,10 @@ Codex (`~/.codex/AGENTS.md`), Claude (`~/.claude/CLAUDE.md`), and Gemini
 agents that automatically discover `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or
 GitHub Copilot instructions.
 
+The installer also manages `~/.claude/settings.json`. It preserves the chosen
+model and theme and sets Claude Code's maximum parallel read-only tools and
+subagents to 64 through `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY`.
+
 For an agent that does not automatically load repository instructions, ask it
 to read `AI_GUIDANCE.md` before making changes. Keep shared guidance in that
 file so the compatibility entry points do not drift apart.

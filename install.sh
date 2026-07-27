@@ -38,6 +38,7 @@ managed_links="
 .tmux.conf:.tmux.conf
 AI_GUIDANCE.md:.codex/AGENTS.md
 AI_GUIDANCE.md:.claude/CLAUDE.md
+.claude/settings.json:.claude/settings.json
 AI_GUIDANCE.md:.gemini/GEMINI.md
 "
 failed=0
