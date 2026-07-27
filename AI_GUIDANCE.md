@@ -23,6 +23,11 @@ repository work and:
 7. Commit journal and attributable implementation checkpoints locally. Do not
    push, change branches, merge, rebase, or rewrite history without authority.
 
+When journal machinery is unclear or defective, publish an immutable feedback
+report with `journal.py feedback submit`. Do not repair protocol or shared
+state opportunistically. A leased maintenance task reviews feedback and
+records incorporation through an immutable decision.
+
 Run `python3 .journal/bin/journal.py validate` before journal commits.
 
 ## Collaboration
