@@ -82,9 +82,14 @@ From the active repository root, run
   `main`, preserving neither the journal commits nor their ancestry. Verify
   the promoted commit and resulting `main` tree contain no topic-branch
   `.journal/` changes.
-- Keep the journal-bearing topic branch as the durable operational record
-  under the repository's retention policy; it does not require a lingering
-  directory or worktree.
+- A journal-guidance fix made on a non-main branch is incomplete until its
+  journal-free guidance commits are integrated into the authorized target
+  branch, the result is verified, and the temporary branch and any temporary
+  worktree or directory are removed. Return the primary working tree to the
+  target branch in a clean state. Do not claim completion while integration or
+  cleanup remains pending.
+- Push the integrated target branch only with user authority. Lack of push
+  authority does not excuse unfinished local integration and cleanup.
 - Commit often enough that interruption loses little completed work.
 - An interim checkpoint is a continuation boundary, not permission to yield.
   After committing, reread durable state, reassess the queue, and immediately
