@@ -91,9 +91,11 @@ From the active repository root, run
   resume the next runnable work unless a documented yield condition applies.
 - A checkpoint report is only a progress update, even when it names a commit
   or says a coherent unit is complete. Immediately after sending it, reread
-  durable state and run `python3 .journal/bin/journal.py yield-check`. If the
-  check reports work, continue those tasks in the same turn without waiting
-  for acknowledgment. Do not convert the report into a final response.
+  durable state and attempt the repository-local
+  `python3 .journal/bin/journal.py yield-check`. Apply the same fail-closed
+  compatibility rule used before final responses. If the check or direct
+  inspection reports work, continue it in the same turn without waiting for
+  acknowledgment. Do not convert the report into a final response.
 - Do not mix unrelated work in one commit or create trivial checkpoint noise
   when no coherent unit exists.
 - Keep commit subjects imperative and terse. Use a short body only for
@@ -120,10 +122,26 @@ destructive, unsafe, or externally consequential actions.
   documented yield condition.
 - Immediately before any final response, reread durable state and run
   `python3 .journal/bin/journal.py yield-check` from the active repository
-  root. A nonzero result prohibits the final response: continue the reported
-  tasks in the same turn. Never treat an intended final response, a completed
-  lesson or checkpoint, or a prose claim that work will resume as evidence
-  that the queue is drained.
+  root. Only a supported check that completes successfully and reports no
+  runnable task is evidence from that helper that yielding is allowed. A
+  missing or unsupported command, incompatible interface, execution or
+  validation error, interrupted check, or ambiguous result fails closed: it
+  never permits a final response.
+- When the repository-local helper cannot provide a conclusive check, do not
+  invoke another repository's helper or opportunistically migrate journal
+  state. Run the available repository-local validation, then use that
+  repository's documented schema to inspect a stable, complete snapshot of
+  every authoritative task state, dependency, and lease. `queue.md` is only a
+  rebuildable index or cross-check, never sole evidence of drain. Continue
+  every task proved runnable. If validation fails or any record, dependency,
+  ownership, status, snapshot, or readiness result is malformed, changes
+  during inspection, or remains uncertain, final output is prohibited; record
+  and reconcile the machinery defect while continuing independent safe work.
+  Yield only when this direct inspection proves that no task is runnable and
+  another documented yield condition applies.
+- Never treat an intended final response, a completed lesson or checkpoint, a
+  prose claim that work will resume, or missing enforcement machinery as
+  evidence that the queue is drained.
 
 ## Wrongful-stop correction loop
 
