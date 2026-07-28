@@ -168,6 +168,9 @@ fi
 managed_links="
 .zshrc:.zshrc
 .tmux.conf:.tmux.conf
+.gitconfig:.gitconfig
+.config/nvim/init.vim:.config/nvim/init.vim
+.config/glow/glow.yml:.config/glow/glow.yml
 AI_GUIDANCE.md:.codex/AGENTS.md
 ai-guidance:.codex/ai-guidance
 AI_GUIDANCE.md:.claude/CLAUDE.md
