@@ -1,52 +1,27 @@
 # Sub-agent scheduling
 
-When sub-agent tools are available and delegation is permitted, proactively
-use all useful parallel capacity without waiting for the user to repeat the
-instruction.
+Apply this document only when sub-agent tools are available. Delegation remains
+subject to higher-authority permission, user scope, safety, and dependencies.
 
-- Treat every user message, permission or authority change, initial schedule,
-  checkpoint, task transition, recovered context, and agent status change as a
-  capacity-scheduling boundary. Do not reuse a cached conclusion that
-  delegation is prohibited, unavailable, full, or unnecessary.
-- At each boundary, perform a live capacity sweep before prose finalization:
-  re-evaluate current delegation permission; list running, completed, blocked,
-  and failed agents; enumerate concrete runnable parallel-safe lanes; compute
-  available slots; and immediately assign the lesser of useful lanes and
-  permitted slots.
-- At initial scheduling and every scheduling boundary, decompose runnable work
-  into concrete, bounded, independently executable lanes with distinct
-  deliverables. Keep active sub-agents at the lesser of available slots and
-  useful parallel-safe lanes.
-- Treat a sub-agent finishing, blocking, failing, or revealing more work as an
-  immediate scheduling boundary. Collect its result promptly, identify any
-  follow-on lane it revealed, and refill every safely usable slot before
-  continuing unrelated prose while parallelizable work remains.
-- Keep the coordinating agent advancing orchestration, integration, or its own
-  nonconflicting lane while delegates run. Review and integrate every result;
-  do not abandon delegated work.
+At initial scheduling, after context recovery, when permission changes, and
+when an agent finishes, blocks, or reveals follow-up work:
+
+1. Re-evaluate whether delegation is currently permitted.
+2. List live agents and available slots.
+3. Identify concrete, bounded, parallel-safe lanes with distinct deliverables.
+4. Assign the lesser of useful lanes and permitted slots.
+5. Collect, review, and integrate completed results; refill useful capacity.
+
+- Keep the coordinator advancing integration or a nonconflicting lane.
 - Give mutating lanes exclusive ownership of files and mutable resources.
-  Prefer read-only delegates for overlapping inspection or review, and
-  serialize unresolved dependencies or shared-worktree conflicts. Designate
-  one coordinator for integration, commits, pushes, and other repository-wide
-  or externally consequential actions.
-- Do not manufacture work, fragment indivisible work, create unjustified
-  duplicate lanes, or spend more coordination than the delegation can save
-  merely to occupy slots.
-- Capacity may remain idle only when no additional useful parallel-safe lane
-  exists or delegation is unavailable or prohibited. Record the concrete
-  constraint in applicable task state, including whether the limiter is
-  higher-authority permission, dependency order, file ownership, safety,
-  external authority, tool capacity, or coordination cost. Reassess it at the
-  next boundary; an earlier prohibition or acknowledgment is not current
-  evidence.
+  Prefer read-only delegates when inspection overlaps.
+- Use one coordinator for commits, integration, pushes, and other shared or
+  externally consequential actions.
+- Do not manufacture work, split indivisible tasks, duplicate effort without a
+  review purpose, or spend more coordination than delegation saves.
+- Leave capacity idle only when no useful safe lane exists or delegation is
+  prohibited. Record the concrete constraint in applicable task state and
+  reassess it at the next scheduling boundary.
 
-Use this compact watchdog after context recovery and before any final response:
-
-1. Is delegation currently permitted by every higher-authority instruction?
-2. Which agents are live now, and which slots became free?
-3. Which runnable lanes have independent deliverables and exclusive ownership?
-4. Were all useful permitted slots filled or given a durable concrete reason?
-5. Is the coordinator still advancing integration or a nonconflicting lane?
-
-Dependencies, user scope, safety rules, authority, and higher-priority
-instructions remain controlling. Delegation never broadens authority.
+Before completion, confirm that no useful delegated result is abandoned and no
+permitted runnable lane was skipped without a concrete reason.
