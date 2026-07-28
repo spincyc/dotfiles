@@ -101,6 +101,31 @@ destructive, unsafe, or externally consequential actions.
   lesson or checkpoint, or a prose claim that work will resume as evidence
   that the queue is drained.
 
+## Wrongful-stop correction loop
+
+When the user asks why work stopped and the agent concludes that stopping was
+incorrect, treat that conclusion as a discovered guidance or journal-protocol
+defect, not merely an explanation or apology.
+
+1. State the concrete cause and the rule or missing safeguard that permitted
+   it. Resume all runnable work immediately; diagnosis is not a new boundary.
+2. Before final response, submit immutable feedback in the repository that
+   owns the defective guidance. Include the evidence, impact, failed rule, and
+   a bounded preventative change. Do not silently rewrite protocol while
+   unrelated work owns the journal.
+3. Route incorporation through that repository's active, leased maintenance
+   task, with an immutable decision, review disposition, validation, and
+   coherent commit. Reassess the queue and continue independent work while the
+   maintenance change is pending.
+4. Keep journal ownership strict. The user's active repository journal records
+   its work; generic-guidance maintenance uses the generic guidance
+   repository's own journal only as a separately scoped task. Never use the
+   dotfiles journal as fallback state for another repository.
+5. If the owning repository or maintenance path is unavailable, durably
+   record the proposed correction in the active repository and mark only that
+   maintenance action blocked. Do not claim the recurrence is fixed, and do
+   not stop other runnable work.
+
 ## Execution windows
 
 - Treat time slices, token or context windows, compaction, and automatic
