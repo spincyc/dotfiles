@@ -64,17 +64,22 @@ files outside this repository.
 
 ## AI-assisted contributions
 
-[`AI_GUIDANCE.md`](AI_GUIDANCE.md) is the tool-neutral source of truth for AI
-agents. The installer links it to the personal instruction locations used by
-Codex (`~/.codex/AGENTS.md`), Claude (`~/.claude/CLAUDE.md`), and Gemini
-(`~/.gemini/GEMINI.md`). Repository compatibility files also expose it to
-agents that automatically discover `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or
-GitHub Copilot instructions.
+[`AI_GUIDANCE.md`](AI_GUIDANCE.md) is the mandatory tool-neutral entry point
+for AI agents. It loads the numbered feature documents in
+[`ai-guidance/`](ai-guidance/) in order. The installer links both the entry
+point and feature directory into the personal instruction locations used by
+Codex (`~/.codex/`), Claude (`~/.claude/`), and Gemini (`~/.gemini/`).
+Repository compatibility files expose the same entry point to agents that
+automatically discover `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or GitHub
+Copilot instructions.
 
 The installer also manages `~/.claude/settings.json`. It preserves the chosen
 model and theme and sets Claude Code's maximum parallel read-only tools and
 subagents to 64 through `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY`.
 
-For an agent that does not automatically load repository instructions, ask it
-to read `AI_GUIDANCE.md` before making changes. Keep shared guidance in that
-file so the compatibility entry points do not drift apart.
+After pulling the document split for the first time, rerun `./install.sh` to
+create the managed feature-directory links. For an agent that does not
+automatically load repository instructions, ask it to read
+`AI_GUIDANCE.md` and its numbered documents before making changes. Keep the
+entry point concise and put each policy in its owning feature document so the
+compatibility entry points do not drift apart.

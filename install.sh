@@ -37,9 +37,12 @@ managed_links="
 .zshrc:.zshrc
 .tmux.conf:.tmux.conf
 AI_GUIDANCE.md:.codex/AGENTS.md
+ai-guidance:.codex/ai-guidance
 AI_GUIDANCE.md:.claude/CLAUDE.md
+ai-guidance:.claude/ai-guidance
 .claude/settings.json:.claude/settings.json
 AI_GUIDANCE.md:.gemini/GEMINI.md
+ai-guidance:.gemini/ai-guidance
 "
 failed=0
 
