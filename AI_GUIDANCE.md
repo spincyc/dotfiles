@@ -41,6 +41,8 @@ file before repository work and:
 7. Yield only when no task is runnable, progress requires unavailable
    authority or an external-state change, or the environment forces handoff.
    A blocked task does not justify yielding while another task is runnable.
+   An unexplained artifact blocks only work that could overlap it; preserve it
+   and continue independent queue lanes.
 8. Commit journal and attributable implementation locally in regular,
    coherent checkpoints. Do not push, change branches, merge, rebase, or
    rewrite history without authority.
@@ -59,12 +61,19 @@ From the active repository root, run
 - Commit at natural recovery boundaries: one coherent behavior, decision,
   migration, or verified implementation unit with its tests and journal
   records. Commit often enough that interruption loses little completed work.
+- An interim checkpoint is a continuation boundary, not permission to yield.
+  After committing, reread durable state, reassess the queue, and immediately
+  resume the next runnable work unless a documented yield condition applies.
 - Do not mix unrelated work in one commit or create trivial checkpoint noise
   when no coherent unit exists.
 - Keep commit subjects imperative and terse. Use a short body only for
   non-obvious rationale, consequences, or required durable trailers.
 - Keep code comments terse. Explain only non-obvious intent, constraints, or
   invariants; do not narrate the code.
+
+Explicit persistence language such as `do not stop`, `finish`, or `drain the
+queue` reinforces these continuation rules. It does not authorize unrelated,
+destructive, unsafe, or externally consequential actions.
 
 ## Collaboration
 
