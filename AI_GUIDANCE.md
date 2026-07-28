@@ -65,6 +65,11 @@ From the active repository root, run
 - An interim checkpoint is a continuation boundary, not permission to yield.
   After committing, reread durable state, reassess the queue, and immediately
   resume the next runnable work unless a documented yield condition applies.
+- A checkpoint report is only a progress update, even when it names a commit
+  or says a coherent unit is complete. Immediately after sending it, reread
+  durable state and run `python3 .journal/bin/journal.py yield-check`. If the
+  check reports work, continue those tasks in the same turn without waiting
+  for acknowledgment. Do not convert the report into a final response.
 - Do not mix unrelated work in one commit or create trivial checkpoint noise
   when no coherent unit exists.
 - Keep commit subjects imperative and terse. Use a short body only for
@@ -80,6 +85,7 @@ destructive, unsafe, or externally consequential actions.
 
 - A status or commentary message is a non-terminal progress report, not a
   turn, checkpoint, handoff, or yield boundary.
+- This includes checkpoint reports sent immediately after a commit.
 - Immediately after sending one, continue pending tool work in the same turn.
   Do not wait for acknowledgment unless user input is genuinely required.
 - Pending checkpoints and active queue lanes remain live across progress
