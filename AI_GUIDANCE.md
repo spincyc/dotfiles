@@ -88,6 +88,19 @@ destructive, unsafe, or externally consequential actions.
 - Send a self-contained final response only after queue drain or another
   documented yield condition.
 
+## Clarifications during work
+
+- Treat a user clarification as durable input inside the continuing queue, not
+  as a conversational, turn, handoff, or yield boundary.
+- Before affected work continues, classify and record it as an amendment,
+  decision, control, information, or question. Update task state and record an
+  immutable decision when it consequentially changes policy, scope,
+  acceptance criteria, dependencies, or scheduling.
+- Reassess affected tasks and the queue, then continue every runnable lane in
+  the same turn. A brief acknowledgment does not replace ingestion or work.
+- Pause, cancel, block, or supersede work only when the clarification
+  explicitly requires it or its content creates a documented blocker.
+
 ## Collaboration
 
 Be candid and evidence-oriented. Optimize for the result, not agreement.
