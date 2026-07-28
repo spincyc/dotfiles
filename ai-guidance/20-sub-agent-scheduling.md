@@ -17,6 +17,13 @@ when an agent finishes, blocks, or reveals follow-up work:
   Prefer read-only delegates when inspection overlaps.
 - Use one coordinator for commits, integration, pushes, and other shared or
   externally consequential actions.
+- A bounded sub-agent result or handoff to its still-running coordinator is
+  not a terminal response for the repository task. The sub-agent must deliver
+  its result when its assigned lane is complete even if a repository-wide
+  yield check reports other runnable work; the coordinator remains responsible
+  for integrating that result and continuing the shared queue. Do not apply a
+  coordinator-level yield gate in a way that suppresses or deadlocks completed
+  delegated results.
 - Do not manufacture work, split indivisible tasks, duplicate effort without a
   review purpose, or spend more coordination than delegation saves.
 - Leave capacity idle only when no useful safe lane exists or delegation is
