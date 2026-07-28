@@ -19,6 +19,9 @@ Compared the tracked repository with `/home/ksh`, `~/.config`, and the active ML
 
 Pacman owns packaged programs and system files under `/usr` and `/etc`; it does not own this user's home configuration. This host currently has `hyprland 0.56.1-2`, `waybar 0.15.0-2`, `kitty 0.48.1-1`, and `neovim 0.12.4-1`; their `~/.config` files remain user-managed. Keep a separate reviewed package-name manifest (`pacman -Qqe`, with foreign/AUR packages recorded separately) rather than mixing package installation with dotfile deployment.
 
-## Follow-up
+## Resolution
 
-The only clear coverage gaps are optional Neovim and Glow overlays, plus a reviewed portable Git configuration. Add them after deciding whether these applications should follow to every host; do not expand the repository to include the ML4W vendor tree.
+The Neovim and Glow overlays and the reviewed portable Git configuration are now
+tracked and installed as core symlinks. Bash startup files and `gh` preferences
+remain intentionally untracked until there is a demonstrated need to make them
+cross-host policy. Do not expand the repository to include the ML4W vendor tree.
