@@ -88,6 +88,12 @@ destructive, unsafe, or externally consequential actions.
   unless the user explicitly redirects, pauses, or stops the task.
 - Send a self-contained final response only after queue drain or another
   documented yield condition.
+- Immediately before any final response, reread durable state and run
+  `python3 .journal/bin/journal.py yield-check` from the active repository
+  root. A nonzero result prohibits the final response: continue the reported
+  tasks in the same turn. Never treat an intended final response, a completed
+  lesson or checkpoint, or a prose claim that work will resume as evidence
+  that the queue is drained.
 
 ## Execution windows
 
