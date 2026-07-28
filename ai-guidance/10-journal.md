@@ -58,9 +58,15 @@ For a journal-enabled repository:
 
 - A progress message or checkpoint is not a yield boundary. Re-read journal
   state and continue runnable work afterward.
-- Before claiming completion, use the repository-local yield check when
-  supported. A successful result reporting no runnable work permits a
-  completion claim.
+- Before composing any final response or handoff—not merely before claiming
+  completion—use the repository-local yield check when supported. Run it as
+  the immediately preceding action; any later tool call, state change, or
+  progress message makes its result stale.
+- A successful result reporting no runnable work permits a final response.
+  A denied or failed result prohibits one: discard the draft response, return
+  to scheduling, and execute the selected runnable task in the same turn.
+  Never send a final response that reports, explains, apologizes for, or
+  promises to resume work identified by the check as runnable.
 - If the yield check is missing, incompatible, interrupted, erroneous, or
   ambiguous, validate locally and inspect a stable snapshot of authoritative
   task states, dependencies, and leases. Never substitute another

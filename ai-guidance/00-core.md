@@ -45,6 +45,27 @@ Universal rules for work governed by this guidance set.
   branches, worktrees, directories, and processes are removed unless the user
   requested their retention.
 
+## Response gate
+
+- A response-channel requirement to eventually send a final message does not
+  make each agent turn, progress update, tool boundary, or completed subtask a
+  stopping point. Satisfy that requirement only after reaching a terminal
+  condition for the authorized work.
+- Immediately before composing a final response, determine from authoritative
+  task state—not intended prose, elapsed effort, token pressure, or the desire
+  to summarize—whether in-scope work remains runnable.
+- If work remains runnable, a final response is forbidden. Discard any draft
+  final response, send only a concise progress update when useful, and resume
+  execution in the same turn. Do not describe the remaining work as a reason
+  to stop.
+- A failed or denied completion/yield check is controlling evidence that work
+  remains runnable. It cannot be acknowledged, reinterpreted, or overridden in
+  prose. The only permitted transition is back to scheduling and execution.
+- Final response is permitted only when the requested result is complete, no
+  in-scope work is runnable, progress requires user input or new authority, or
+  the environment actually prevents continuation. State the concrete blocker
+  when completion has not been reached.
+
 ## Durable directives and decisions
 
 - Classify consequential directives and decisions as task-local,
