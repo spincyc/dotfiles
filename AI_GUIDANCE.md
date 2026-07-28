@@ -39,8 +39,9 @@ file before repository work and:
    while any task is runnable. After each completion, rebuild and reassess the
    queue, select the next runnable task, and continue it in the same session.
 7. Yield only when no task is runnable, progress requires unavailable
-   authority or an external-state change, or the environment forces handoff.
-   A blocked task does not justify yielding while another task is runnable.
+   authority or an external-state change, or the environment actually prevents
+   further execution or continuation. A blocked task does not justify yielding
+   while another task is runnable.
    An unexplained artifact blocks only work that could overlap it; preserve it
    and continue independent queue lanes.
 8. Commit journal and attributable implementation locally in regular,
@@ -87,6 +88,19 @@ destructive, unsafe, or externally consequential actions.
   unless the user explicitly redirects, pauses, or stops the task.
 - Send a self-contained final response only after queue drain or another
   documented yield condition.
+
+## Execution windows
+
+- Treat time slices, token or context windows, compaction, and automatic
+  continuation boundaries as scheduling boundaries, not blockers or handoffs.
+- Before a window ends, commit a coherent checkpoint and durably record the
+  exact next action and live work. Then continue automatically in the next
+  execution turn without waiting for the user.
+- Runnable tasks, fresh corrected artifacts, and live runs remain active
+  across windows. Re-read their current state and resume or monitor them.
+- Do not report a technical blocker merely because a window ended. An
+  environment-forced handoff exists only when further execution cannot run or
+  be scheduled.
 
 ## Clarifications during work
 
