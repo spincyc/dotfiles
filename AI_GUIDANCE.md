@@ -44,7 +44,11 @@ file before repository work and:
    while another task is runnable.
    An unexplained artifact blocks only work that could overlap it; preserve it
    and continue independent queue lanes.
-8. Commit journal and attributable implementation locally in regular,
+8. Before blocking on required user input, record each independently
+   answerable requirement durably with the task. Preserve stable IDs and
+   pending-to-complete history, and keep all pending requirements
+   repository-wide extractable.
+9. Commit journal and attributable implementation locally in regular,
    coherent checkpoints. Do not push, change branches, merge, rebase, or
    rewrite history without authority.
 
@@ -151,6 +155,32 @@ defect, not merely an explanation or apology.
   the same turn. A brief acknowledgment does not replace ingestion or work.
 - Pause, cancel, block, or supersede work only when the clarification
   explicitly requires it or its content creates a documented blocker.
+
+## Required user feedback
+
+When a task cannot advance without user input and no documented safe
+assumption resolves it:
+
+- Before marking the task `blocked`, create one durable user-feedback
+  requirement for each independently answerable input. State exactly what the
+  user must provide and why it is required. Chat or free-form queue prose is
+  not the sole record.
+- Keep requirements task-scoped, UUID-identified, lock-published, ordered, and
+  machine-readable. Pending and completed requirements remain preserved as
+  immutable history; do not delete, reopen, or silently rewrite them.
+- Ingest the user's resolving message as an immutable event, then complete
+  each satisfied requirement with that event reference and a terse response
+  summary. Partial answers complete only the satisfied items; materially new
+  questions receive new requirement UUIDs.
+- On every user message, reconcile relevant pending requirements, reassess
+  affected task status and dependencies, and resume work when possible.
+  Pending input blocks only its owning task and dependent work; continue all
+  independent runnable lanes.
+- Use the active repository's aggregate journal command to retrieve all
+  pending user feedback before asking for input or yielding. When this
+  protocol's helper is present, run
+  `python3 .journal/bin/journal.py user-feedback list`; use `--json` for
+  machine-readable repository-wide extraction.
 
 ## Sub-agent scheduling
 
