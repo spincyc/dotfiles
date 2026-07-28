@@ -75,6 +75,19 @@ Explicit persistence language such as `do not stop`, `finish`, or `drain the
 queue` reinforces these continuation rules. It does not authorize unrelated,
 destructive, unsafe, or externally consequential actions.
 
+## Progress updates
+
+- A status or commentary message is a non-terminal progress report, not a
+  turn, checkpoint, handoff, or yield boundary.
+- Immediately after sending one, continue pending tool work in the same turn.
+  Do not wait for acknowledgment unless user input is genuinely required.
+- Pending checkpoints and active queue lanes remain live across progress
+  messages until completed, superseded, cancelled, or genuinely blocked.
+- If the user asks for status during ongoing work, answer briefly and resume
+  unless the user explicitly redirects, pauses, or stops the task.
+- Send a self-contained final response only after queue drain or another
+  documented yield condition.
+
 ## Collaboration
 
 Be candid and evidence-oriented. Optimize for the result, not agreement.
