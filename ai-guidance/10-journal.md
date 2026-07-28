@@ -48,9 +48,11 @@ file before repository work and:
    answerable requirement durably with the task. Preserve stable IDs and
    pending-to-complete history, and keep all pending requirements
    repository-wide extractable.
-10. Commit journal and attributable implementation locally in regular,
-    coherent checkpoints. Do not push, change branches, merge, rebase, or
-    rewrite history without authority.
+10. Commit journal records on the active non-main topic branch in regular,
+    coherent checkpoints adjacent to their attributable implementation
+    commits. Keep implementation commits free of `.journal/` changes so they
+    can be promoted independently. Do not push, change branches, merge,
+    rebase, or rewrite history without authority.
 
 When journal machinery is unclear or defective, publish an immutable feedback
 report in its owning repository with `journal.py feedback submit`. Do not
@@ -63,9 +65,27 @@ From the active repository root, run
 
 ## Checkpoints and prose
 
-- Commit at natural recovery boundaries: one coherent behavior, decision,
-  migration, or verified implementation unit with its tests and journal
-  records. Commit often enough that interruption loses little completed work.
+- Never create a parallel checkout, worktree, clone, sibling directory, or
+  alternate journal directory for journal isolation. Use one working tree and
+  the active repository's one `.journal/` path.
+- Before the first journal mutation for new work, leave `main` by creating or
+  switching to an authorized non-main topic branch in the same working tree.
+  Never commit new journal state on `main`.
+- Commit at natural recovery boundaries. Put journal state in branch-local
+  journal commits and verified implementation, documentation, tests, or
+  migrations in adjacent commits that contain no `.journal/` changes. Each
+  commit remains one coherent unit, and the adjacency durably associates the
+  operational record with the work without making journal history a
+  prerequisite of the implementation commit.
+- Never merge or rebase a journal-bearing topic branch into `main`. Promote
+  only the journal-free implementation commits by cherry-picking them onto
+  `main`, preserving neither the journal commits nor their ancestry. Verify
+  the promoted commit and resulting `main` tree contain no topic-branch
+  `.journal/` changes.
+- Keep the journal-bearing topic branch as the durable operational record
+  under the repository's retention policy; it does not require a lingering
+  directory or worktree.
+- Commit often enough that interruption loses little completed work.
 - An interim checkpoint is a continuation boundary, not permission to yield.
   After committing, reread durable state, reassess the queue, and immediately
   resume the next runnable work unless a documented yield condition applies.
