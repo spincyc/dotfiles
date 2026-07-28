@@ -44,3 +44,16 @@ Universal rules for work governed by this guidance set.
   intended local target, the working tree is clean, and task-created temporary
   branches, worktrees, directories, and processes are removed unless the user
   requested their retention.
+
+## Durable directives and decisions
+
+- Classify consequential directives and decisions as task-local,
+  implementation-specific, repository-wide, or general.
+- Before completion, promote anything future tasks need from chat, temporary
+  state, or task journals into its canonical non-journal artifact on the
+  intended target branch. Prefer existing code, tests, configuration,
+  documentation, repository guidance, or general guidance over a new record.
+- Do not preserve task-local details merely for completeness. Never commit
+  secrets, credentials, transient host data, or temporary operational values.
+- Treat a durable artifact as current memory and supersede it explicitly when
+  policy changes; do not leave conflicting instructions in place.

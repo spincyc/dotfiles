@@ -46,6 +46,9 @@ For a journal-enabled repository:
   tree contains no `.journal/` path.
   Then delete the feature branch and any task-created temporary resources.
   Journal records are temporary feature-branch state, not retained history.
+- Before deleting journal state, promote every directive or decision needed by
+  future tasks into its canonical non-journal artifact under the core durable
+  directives policy.
 - A fix is incomplete until its non-journal commits are integrated locally,
   the checkout is clean on the target branch, and cleanup is complete.
 - Push only with user authority. Lack of push authority does not excuse
