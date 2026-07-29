@@ -7,7 +7,6 @@ ARCH_PACKAGES := \
   nodejs \
   python \
   ripgrep \
-  sqlite \
   tmux \
   zsh
 

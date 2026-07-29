@@ -36,11 +36,8 @@ fi
 managed_links="
 .zshrc:.zshrc
 .tmux.conf:.tmux.conf
-bin/aiq:.local/bin/aiq
-hooks/codex-user-prompt-submit:.local/libexec/aiq/codex-user-prompt-submit
 AI_GUIDANCE.md:.codex/AGENTS.md
 ai-guidance:.codex/ai-guidance
-codex/hooks.json:.codex/hooks.json
 AI_GUIDANCE.md:.claude/CLAUDE.md
 ai-guidance:.claude/ai-guidance
 .claude/settings.json:.claude/settings.json

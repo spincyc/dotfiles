@@ -84,16 +84,6 @@ def check_tracked_paths() -> None:
         raise RuntimeError(f"journal paths are tracked: {', '.join(forbidden)}")
 
 
-def check_aiq() -> None:
-    run(["bin/aiq", "--version"])
-    test_environment = os.environ.copy()
-    test_environment["PYTHONDONTWRITEBYTECODE"] = "1"
-    run(
-        ["python3", "-m", "unittest", "discover", "-s", "tests"],
-        env=test_environment,
-    )
-
-
 def check_profile() -> None:
     run(["git", "diff", "--check", "HEAD"])
     run(["sh", "-n", "install.sh"])
@@ -128,7 +118,6 @@ def main() -> int:
         check_arch_packages,
         check_bootstrap_budget,
         check_tracked_paths,
-        check_aiq,
         check_profile,
     ]
     failures: list[str] = []

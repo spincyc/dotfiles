@@ -19,7 +19,6 @@ check_command make make
 check_command node nodejs
 check_command python3 python
 check_command rg ripgrep
-check_command sqlite3 sqlite
 check_command tmux tmux
 check_command zsh zsh
 
