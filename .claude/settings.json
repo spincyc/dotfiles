@@ -2,6 +2,7 @@
   "env": {
     "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY": "64"
   },
-  "model": "opus[1m]",
-  "theme": "dark"
+  "model": "claude-fable-5[1m]",
+  "theme": "dark",
+  "skipWorkflowUsageWarning": true
 }
