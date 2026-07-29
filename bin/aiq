@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+
+from pathlib import Path
+import sys
+
+
+repository_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(repository_root))
+
+from aiq.cli import main
+
+
+raise SystemExit(main())

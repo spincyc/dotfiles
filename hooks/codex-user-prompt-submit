@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+aiq_command="$HOME/.local/bin/aiq"
+
+if [ ! -x "$aiq_command" ]; then
+  printf 'AI journal capture is unavailable: %s is missing.\n' "$aiq_command" >&2
+  exit 2
+fi
+
+if ! "$aiq_command" ingest --hook-json --quiet; then
+  printf 'AI journal capture failed; resolve the reported error before continuing.\n' >&2
+  exit 2
+fi

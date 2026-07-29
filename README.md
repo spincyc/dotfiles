@@ -79,6 +79,26 @@ make sanity-check
 make verify
 ```
 
+## Local AI journal
+
+The `aiq` command stores raw user messages in a machine-local SQLite journal.
+Repository journals live under the Git common directory and are shared by all
+worktrees. Agent-root journals live under the XDG state directory.
+
+```sh
+aiq journal init
+aiq ingest --message "Queue this work"
+aiq inbox list
+aiq journal check
+aiq journal snapshot
+```
+
+Message content is omitted from normal inbox output. Use
+`aiq inbox list --include-content` only when the original text is needed.
+The installer also configures a Codex prompt hook that records each message
+before the model receives it. Review and trust the hook with `/hooks` after
+installation or whenever its definition changes.
+
 ## AI-assisted contributions
 
 [`AI_GUIDANCE.md`](AI_GUIDANCE.md) is the mandatory tool-neutral entry point
