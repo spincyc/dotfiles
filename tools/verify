@@ -86,7 +86,12 @@ def check_tracked_paths() -> None:
 
 def check_aiq() -> None:
     run(["bin/aiq", "--version"])
-    run(["python3", "-m", "unittest", "discover", "-s", "tests"])
+    test_environment = os.environ.copy()
+    test_environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    run(
+        ["python3", "-m", "unittest", "discover", "-s", "tests"],
+        env=test_environment,
+    )
 
 
 def check_profile() -> None:
