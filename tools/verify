@@ -76,14 +76,20 @@ def check_bootstrap_budget() -> None:
 
 
 def check_tracked_paths() -> None:
-    tracked = run(["git", "ls-files", "-z"]).split("\0")
-    forbidden = [
-        path
-        for path in tracked
-        if path == ".journal" or path.startswith(".journal/")
-    ]
+    tracked = [path for path in run(["git", "ls-files", "-z"]).split("\0") if path]
+    forbidden = [path for path in tracked if path.endswith(".sqlite3")]
+    for path in tracked:
+        try:
+            with open(REPO_ROOT / path, "rb") as handle:
+                first_line = handle.readline(512)
+        except OSError:
+            continue
+        if b"aiq-journal-jsonl" in first_line:
+            forbidden.append(path)
     if forbidden:
-        raise RuntimeError(f"journal paths are tracked: {', '.join(forbidden)}")
+        raise RuntimeError(
+            f"journal artifacts are tracked: {', '.join(sorted(set(forbidden)))}"
+        )
 
 
 def check_guidance_index() -> None:

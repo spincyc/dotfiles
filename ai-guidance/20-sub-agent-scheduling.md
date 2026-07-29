@@ -21,8 +21,8 @@ when an agent finishes, blocks, or reveals follow-up work:
   deliverable, the exclusive resource boundary, and exact invocations with
   absolute paths for any tool absent from the non-interactive `PATH`; verify
   resolution before delegating.
-- The completion gate in `00-core.md` evaluates each agent against its own
-  assigned scope. A sub-agent's terminal condition is its assigned lane: once
+- The Completion and stopping rules in `00-core.md` evaluate each agent
+  against its own assigned scope. A sub-agent's terminal condition is its assigned lane: once
   the lane is complete, delivering the result is mandatory even though
   repository-wide runnable work remains — that work belongs to the
   coordinator, whose terminal condition is the full task, including
