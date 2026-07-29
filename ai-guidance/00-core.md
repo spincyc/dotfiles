@@ -6,8 +6,8 @@ Universal rules for work governed by this guidance set.
 
 - Thrift: never spend a scarce resource twice: compute/flow, context/stock, or
   user time/stalls.
-- Determinism: codified answers repeat; re-derived ones drift. Turn settled,
-  repeatable reasoning into local tools, tests, or configuration.
+- Determinism: codified answers repeat; re-derived ones drift. Placement rules
+  live under Durable directives and decisions.
 
 ## Authority and scope
 
@@ -33,45 +33,38 @@ Universal rules for work governed by this guidance set.
 - Preserve unrelated user work, secrets, credentials, and existing history.
   Inspect repository state before overlapping mutations.
 
-## Execution and completion
+## Completion and stopping
 
-- Continue useful independent work while another path is blocked.
-- Prefer safe, reversible assumptions that retain the requested outcome.
-- Treat progress reports, checkpoints, clarifications, and execution-window
-  boundaries as non-terminal while in-scope work remains runnable.
+- Continue useful independent work while another path is blocked. Prefer
+  safe, reversible assumptions that retain the requested outcome.
 - Apply user clarifications before affected work continues. Pause, cancel, or
   supersede work only when the clarification requires it.
+- Progress reports, checkpoints, tool boundaries, and execution-window
+  boundaries are non-terminal while in-scope work remains runnable.
 - State blockers with concrete evidence and the exact missing input,
-  authority, external change, or environmental capability. Continue
+  authority, external change, or environmental capability, then continue
   independent work.
 - Use the smallest relevant verification and report unavailable checks
-  accurately.
-- Do not manufacture completion or conceal skipped verification.
+  accurately. Do not manufacture completion or conceal skipped verification.
 - Completion means the requested result is verified and integrated into its
-  intended local target, the working tree is clean, and task-created temporary
+  intended local target; the working tree is clean; task-created temporary
   branches, worktrees, directories, and processes are removed unless the user
-  requested their retention.
-
-## Response gate
-
-- A response-channel requirement to eventually send a final message does not
-  make each agent turn, progress update, tool boundary, or completed subtask a
-  stopping point. Satisfy that requirement only after reaching a terminal
-  condition for the authorized work.
-- Immediately before composing a final response, determine from authoritative
-  task state—not intended prose, elapsed effort, token pressure, or the desire
-  to summarize—whether in-scope work remains runnable.
-- If work remains runnable, a final response is forbidden. Discard any draft
-  final response, send only a concise progress update when useful, and resume
-  execution in the same turn. Do not describe the remaining work as a reason
-  to stop.
-- A failed or denied completion/yield check is controlling evidence that work
-  remains runnable. It cannot be acknowledged, reinterpreted, or overridden in
-  prose. The only permitted transition is back to scheduling and execution.
-- Final response is permitted only when the requested result is complete, no
-  in-scope work is runnable, progress requires user input or new authority, or
-  the environment actually prevents continuation. State the concrete blocker
-  when completion has not been reached.
+  requested retention; and, where a local work ledger is in use, outcomes are
+  recorded and held claims are completed or released (see `10-journal.md`).
+- Immediately before composing a final response, check authoritative work
+  state, not intended prose, elapsed effort, or token pressure. Where aiq is
+  available, consult `aiq status`: ready tasks, unexpired active claims, or
+  unapplied messages mean in-scope work remains runnable.
+- While in-scope work remains runnable, a final response is forbidden: send a
+  concise progress update only when useful and resume execution in the same
+  turn.
+- When a completion or Stop hook denies termination, its message is
+  controlling evidence of runnable work: run the remaining work; never argue
+  with, reinterpret, or work around the hook.
+- A final response is permitted only when the requested result is complete,
+  progress requires user input or new authority, or the environment actually
+  prevents continuation. State the concrete blocker when completion has not
+  been reached.
 
 ## Durable directives and decisions
 
@@ -81,6 +74,11 @@ Universal rules for work governed by this guidance set.
   state, or task journals into its canonical non-journal artifact on the
   intended target branch. Prefer existing code, tests, configuration,
   documentation, repository guidance, or general guidance over a new record.
+- When promoting, prefer the most executable artifact that fits: a registry
+  tool per `15-tool-making.md` (at its recurrence thresholds) for recurring
+  deterministic derivations, then a test or check, then configuration;
+  reserve guidance prose for judgment. Keep each rule in exactly one artifact
+  and cross-reference it elsewhere.
 - Do not preserve task-local details merely for completeness. Never commit
   secrets, credentials, transient host data, or temporary operational values.
 - Treat a durable artifact as current memory and supersede it explicitly when

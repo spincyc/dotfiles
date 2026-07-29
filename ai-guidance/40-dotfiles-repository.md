@@ -15,6 +15,14 @@ opt-in desktop overlays:
 - `profiles/`: curated common and semantic host layers for supported desktop
   profiles.
 - `tests/`: isolated installer and safety checks.
+- `AI_GUIDANCE.md`, `ai-guidance/`, and the bootstrap entry points
+  (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`):
+  the guidance root; bootstrap files defer to `AI_GUIDANCE.md`.
+- `tools/`, `Makefile`: repository verification; `make verify` is the
+  authoritative check battery.
+- `.claude/settings.json` and other agent host configuration: managed base
+  settings only; installed integrations layer tool-owned hook groups onto the
+  live files.
 - `README.md`: setup, synchronization, and local overrides.
 
 Exclude AIQ runtime state, credentials, private host identity, generated
@@ -50,29 +58,15 @@ a hostname.
 - Do not edit outside this repository during routine work or verification
   unless the user requests installation or managed-file verification.
 
-## Guidance maintenance
-
-A guidance fix made off `main` is incomplete until its commits are integrated
-into local `main`, the temporary branch and any temporary worktree or directory
-are removed, and the checkout is clean on `main`. Never add AIQ runtime state
-or history while performing that work. Push only with user authority.
-
 ## Verification
 
-Run the smallest relevant checks. For repository-wide profile changes:
+Run the smallest relevant checks; `make verify` is the authoritative
+repository-wide battery (syntax, tmux, temp-home install, bootstrap budget,
+index parity, tracked-path hygiene). It does not yet cover the isolated
+profile checks — run those separately when profiles change:
 
 ```sh
-sh -n install.sh
 sh -n tests/install.sh
-zsh -n .zshrc
-tmux_socket="dotfiles-check-$$"
-tmux -L "$tmux_socket" -f "$PWD/.tmux.conf" new-session -d
-tmux -L "$tmux_socket" kill-server
-
-install_test_home=$(mktemp -d)
-env HOME="$install_test_home" ./install.sh
-env HOME="$install_test_home" ./install.sh --check
-
 ./tests/install.sh
 jq -e . profiles/ml4w/*/common/.config/waybar/*.json \
   profiles/ml4w/*/common/.config/waybar/themes/*/config-custom

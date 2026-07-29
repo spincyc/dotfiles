@@ -15,17 +15,27 @@ Read applicable documents completely and in numeric order:
 1. [`00-core.md`](ai-guidance/00-core.md) — always.
 2. [`05-general.md`](ai-guidance/05-general.md) — always.
 3. [`10-journal.md`](ai-guidance/10-journal.md) — always.
-4. [`15-tool-making.md`](ai-guidance/15-tool-making.md) — when tmt is
-   available.
+4. [`15-tool-making.md`](ai-guidance/15-tool-making.md) — when the active
+   repository has a root `tmt.json` or tmt is available.
 5. [`20-sub-agent-scheduling.md`](ai-guidance/20-sub-agent-scheduling.md) —
    when sub-agent tools are available.
 6. [`30-collaboration.md`](ai-guidance/30-collaboration.md) — always.
-7. [`40-dotfiles-repository.md`](ai-guidance/40-dotfiles-repository.md) — only
+7. [`35-guidance-maintenance.md`](ai-guidance/35-guidance-maintenance.md) —
+   when editing files under the guidance root.
+8. [`40-dotfiles-repository.md`](ai-guidance/40-dotfiles-repository.md) — only
    when dotfiles is the active repository.
 
+## Availability
+
+A CLI tool is available when `command -v` finds it or
+`$HOME/.local/bin/<tool>` is executable; after a `PATH` miss, keep invoking
+the absolute path. Sub-agent availability is a property of the harness tool
+list, not the shell.
+
 These documents are additive within their declared scopes. Numeric order
-controls reading, not precedence; treat a contradiction as a guidance defect,
-not as an implicit override.
+controls reading, not precedence. Treat a contradiction as a guidance defect:
+proceed on the higher-authority or safer reading and record the defect as
+local work.
 
 If an applicable document is unavailable, state the limitation and continue
 only when higher-authority instructions and the readable guidance leave a
