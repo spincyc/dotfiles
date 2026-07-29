@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -8,11 +10,14 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
 from aiq.journal import (
     JournalError,
+    SCHEMA_SQL,
+    SCHEMA_VERSION,
     check_journal,
     create_snapshot,
     ingest_message,
@@ -182,6 +187,183 @@ class JournalTest(unittest.TestCase):
             self.assertEqual(len(snapshots), 2)
             self.assertEqual(result["retained"], 2)
             self.assertEqual(len(result["removed"]), 1)
+
+    def test_schema_v1_migrates_with_message_and_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            scope = self.agent_scope(root)
+            scope.journal_path.parent.mkdir(parents=True)
+            connection = sqlite3.connect(scope.journal_path)
+            try:
+                connection.executescript(SCHEMA_SQL)
+                connection.executemany(
+                    """
+                    INSERT INTO journal_metadata(key, value)
+                    VALUES (?, ?)
+                    """,
+                    {
+                        "schema_version": "1",
+                        "scope_kind": scope.kind,
+                        "scope_root": str(scope.root),
+                        "scope_id": scope.scope_id,
+                    }.items(),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO messages(
+                      message_id,
+                      received_at,
+                      source,
+                      content,
+                      content_sha256,
+                      cwd
+                    ) VALUES (
+                      'msg_existing',
+                      '2026-01-01T00:00:00+00:00',
+                      'user',
+                      'preserve exactly',
+                      ?,
+                      ?
+                    )
+                    """,
+                    (
+                        hashlib.sha256(b"preserve exactly").hexdigest(),
+                        str(root),
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO events(
+                      event_id,
+                      occurred_at,
+                      event_type,
+                      message_id,
+                      payload_json
+                    ) VALUES (
+                      'evt_existing',
+                      '2026-01-01T00:00:00+00:00',
+                      'message.received',
+                      'msg_existing',
+                      '{}'
+                    )
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+            scope.journal_path.chmod(0o600)
+
+            initialize_journal(scope)
+
+            migrated = sqlite3.connect(scope.journal_path)
+            try:
+                metadata = dict(
+                    migrated.execute("SELECT key, value FROM journal_metadata")
+                )
+                content = migrated.execute(
+                    "SELECT content FROM messages WHERE message_id = 'msg_existing'"
+                ).fetchone()[0]
+                event = migrated.execute(
+                    "SELECT event_id FROM events WHERE event_id = 'evt_existing'"
+                ).fetchone()[0]
+                migration = migrated.execute(
+                    """
+                    SELECT from_version, to_version, backup_name
+                    FROM schema_migrations
+                    """
+                ).fetchone()
+            finally:
+                migrated.close()
+
+            self.assertEqual(metadata["schema_version"], str(SCHEMA_VERSION))
+            self.assertEqual(content, "preserve exactly")
+            self.assertEqual(event, "evt_existing")
+            self.assertEqual(migration[:2], (1, 2))
+            backup_path = scope.journal_path.parent / "backups" / migration[2]
+            self.assertTrue(backup_path.exists())
+            backup = sqlite3.connect(backup_path)
+            try:
+                backup_version = backup.execute(
+                    """
+                    SELECT value
+                    FROM journal_metadata
+                    WHERE key = 'schema_version'
+                    """
+                ).fetchone()[0]
+                backup_content = backup.execute(
+                    "SELECT content FROM messages WHERE message_id = 'msg_existing'"
+                ).fetchone()[0]
+            finally:
+                backup.close()
+            self.assertEqual(backup_version, "1")
+            self.assertEqual(backup_content, "preserve exactly")
+            self.assertEqual(list_inbox(scope)[0]["message_id"], "msg_existing")
+
+    def test_concurrent_fresh_initialization_converges(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            scope = self.agent_scope(root)
+            worker_count = 16
+            barrier = threading.Barrier(worker_count)
+
+            def initialize() -> Path:
+                barrier.wait()
+                return initialize_journal(scope)
+
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                paths = list(executor.map(lambda _: initialize(), range(worker_count)))
+
+            self.assertEqual(set(paths), {scope.journal_path})
+            self.assertEqual(check_journal(scope)["schema_version"], SCHEMA_VERSION)
+
+    def test_journal_directory_symlink_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            scope = self.agent_scope(root)
+            target = root / "redirected"
+            target.mkdir()
+            scope.journal_path.parent.parent.mkdir(parents=True)
+            scope.journal_path.parent.symlink_to(target, target_is_directory=True)
+
+            with self.assertRaisesRegex(JournalError, "real directory"):
+                initialize_journal(scope)
+
+    def test_failed_fresh_schema_creation_rolls_back_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            scope = self.agent_scope(root)
+            from aiq import journal as journal_module
+
+            original = journal_module._create_v2_schema
+
+            def fail_after_partial_table(connection: sqlite3.Connection) -> None:
+                connection.execute("CREATE TABLE partial_failure(value TEXT)")
+                raise RuntimeError("injected schema failure")
+
+            with patch.object(
+                journal_module,
+                "_create_v2_schema",
+                fail_after_partial_table,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "injected"):
+                    initialize_journal(scope)
+
+            connection = sqlite3.connect(scope.journal_path)
+            try:
+                partial_count = connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM sqlite_master
+                    WHERE name = 'partial_failure'
+                    """
+                ).fetchone()[0]
+            finally:
+                connection.close()
+            self.assertEqual(partial_count, 0)
+
+            with patch.object(journal_module, "_create_v2_schema", original):
+                initialize_journal(scope)
+            self.assertEqual(check_journal(scope)["status"], "ok")
 
     def test_hook_json_ingestion_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

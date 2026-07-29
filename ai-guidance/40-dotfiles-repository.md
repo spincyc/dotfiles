@@ -10,8 +10,9 @@ Treat this repository as a small terminal profile:
 - `install.sh`: backs up conflicts and links managed files.
 - `README.md`: setup, synchronization, and local overrides.
 
-Exclude `.journal/`, desktop settings, credentials, host-specific values, and
-generated files. Put machine-specific shell configuration in `~/.zshrc.local`.
+Exclude AIQ runtime state, desktop settings, credentials, host-specific
+values, and generated files. Put machine-specific shell configuration in
+`~/.zshrc.local`.
 
 ## Change rules
 
@@ -34,7 +35,7 @@ generated files. Put machine-specific shell configuration in `~/.zshrc.local`.
 
 A guidance fix made off `main` is incomplete until its commits are integrated
 into local `main`, the temporary branch and any temporary worktree or directory
-are removed, and the checkout is clean on `main`. Never add `.journal/` files
+are removed, and the checkout is clean on `main`. Never add AIQ runtime state
 or history while performing that work. Push only with user authority.
 
 ## Verification

@@ -79,22 +79,50 @@ make sanity-check
 make verify
 ```
 
-## Local AI journal
+## Local AI queue and journal
 
-The `aiq` command stores raw user messages in a machine-local SQLite journal.
-Repository journals live under the Git common directory and are shared by all
-worktrees. Agent-root journals live under the XDG state directory.
+The `aiq` command stores raw messages and derived task state in a machine-local
+SQLite journal. Repository state lives under the Git common directory and is
+shared by all worktrees. Agent-root state lives under the XDG state directory.
 
 ```sh
 aiq journal init
 aiq ingest --message "Queue this work"
 aiq inbox list
+aiq task list
+aiq queue peek
 aiq journal check
 aiq journal snapshot
 ```
 
 Message content is omitted from normal inbox output. Use
-`aiq inbox list --include-content` only when the original text is needed.
+`aiq inbox list --include-content` only when interpretation needs the original
+text. Apply the resulting task changes as one strict JSON document:
+
+```sh
+claim_id=$(aiq inbox claim msg_ID --owner "$USER" --json |
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["claim"]["claim_id"])')
+printf '%s\n' \
+  '{"v":1,"expect":{},"effects":[["create","$work",{"title":"Build it"}]]}' |
+  aiq inbox apply msg_ID --claim "$claim_id" --effects - --json
+```
+
+Effects support `create`, `update`, `transition`, `require`, and `unrequire`.
+Existing task references require their current revision in `expect`; a stale
+revision or invalid dependency graph rejects the complete document. Repeating
+the same document is safe, while a different second application is rejected.
+Park a claimed message with `inbox needs-input`, or close an unprocessable
+message with `inbox fail`; both require a reason and are safe to retry.
+`queue next` atomically leases work after deriving readiness from hard
+dependencies and ordering runnable tasks by soft priority and stable creation
+order. Use `queue peek` only for a non-reserving preview. Discover compact
+tool purposes and load only the contract needed:
+
+```sh
+aiq capability list
+aiq capability show inbox.apply
+```
+
 The installer also configures a Codex prompt hook that records each message
 before the model receives it. Review and trust the hook with `/hooks` after
 installation or whenever its definition changes.

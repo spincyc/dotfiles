@@ -8,6 +8,7 @@ import sys
 from typing import Any
 
 from aiq import __version__
+from aiq.capabilities import list_capabilities, show_capability
 from aiq.journal import (
     JournalError,
     check_journal,
@@ -17,6 +18,21 @@ from aiq.journal import (
     list_inbox,
     resolve_scope,
 )
+from aiq.queue import (
+    EFFECT_DOCUMENT_MAX_BYTES,
+    TASK_STATES,
+    apply_effects,
+    claim_message,
+    claim_next_tasks,
+    dispose_message,
+    list_tasks,
+    next_tasks,
+    parse_effect_document,
+    release_claim,
+    show_task,
+)
+
+MESSAGE_INPUT_MAX_BYTES = 1048576
 
 
 def _add_scope_arguments(parser: argparse.ArgumentParser) -> None:
@@ -45,10 +61,42 @@ def _emit(payload: Any, *, as_json: bool, quiet: bool = False) -> None:
         print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
         return
     if isinstance(payload, str):
-        print(payload)
+        print(_single_line(payload))
         return
     for key, value in payload.items():
+        if isinstance(value, str):
+            value = _single_line(value)
         print(f"{key}\t{value}")
+
+
+def _single_line(value: str) -> str:
+    return "".join(
+        character
+        if character.isprintable() and character not in {"\t", "\r", "\n"}
+        else f"\\u{ord(character):04x}"
+        for character in value
+    )
+
+
+def _read_stdin_bounded(maximum_bytes: int, *, label: str) -> str:
+    data = sys.stdin.buffer.read(maximum_bytes + 1)
+    if len(data) > maximum_bytes:
+        raise JournalError(f"{label} exceeds {maximum_bytes} bytes")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise JournalError(f"{label} is not valid UTF-8") from error
+
+
+def _read_file_bounded(path: Path, maximum_bytes: int, *, label: str) -> str:
+    with path.open("rb") as input_file:
+        data = input_file.read(maximum_bytes + 1)
+    if len(data) > maximum_bytes:
+        raise JournalError(f"{label} exceeds {maximum_bytes} bytes")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise JournalError(f"{label} is not valid UTF-8") from error
 
 
 def _journal_path(arguments: argparse.Namespace) -> int:
@@ -86,9 +134,19 @@ def _ingest(arguments: argparse.Namespace) -> int:
     if arguments.message is not None:
         content = arguments.message
     elif arguments.stdin:
-        content = sys.stdin.read()
+        content = _read_stdin_bounded(
+            MESSAGE_INPUT_MAX_BYTES,
+            label="message input",
+        )
     else:
-        hook_input = json.load(sys.stdin)
+        hook_input = json.loads(
+            _read_stdin_bounded(
+                MESSAGE_INPUT_MAX_BYTES,
+                label="hook input",
+            )
+        )
+        if not isinstance(hook_input, dict):
+            raise JournalError("hook input must be a JSON object")
         if hook_input.get("hook_event_name") != "UserPromptSubmit":
             raise JournalError("hook input is not a UserPromptSubmit event")
         content = hook_input.get("prompt")
@@ -98,6 +156,13 @@ def _ingest(arguments: argparse.Namespace) -> int:
         session_id = hook_input.get("session_id")
         turn_id = hook_input.get("turn_id")
         hook_cwd = hook_input.get("cwd")
+        for field_name, field_value in (
+            ("session_id", session_id),
+            ("turn_id", turn_id),
+            ("cwd", hook_cwd),
+        ):
+            if field_value is not None and not isinstance(field_value, str):
+                raise JournalError(f"hook input {field_name} must be a string")
         if hook_cwd:
             cwd = Path(hook_cwd)
 
@@ -127,10 +192,155 @@ def _inbox_list(arguments: argparse.Namespace) -> int:
     for message in messages:
         print(
             f"{message['message_id']}\t{message['state']}\t"
-            f"{message['received_at']}\t{message['source']}"
+            f"{message['received_at']}\t{_single_line(message['source'])}"
         )
         if arguments.include_content:
-            print(message["content"])
+            print(_single_line(message["content"]))
+    return 0
+
+
+def _inbox_apply(arguments: argparse.Namespace) -> int:
+    if str(arguments.effects) == "-":
+        raw = _read_stdin_bounded(
+            EFFECT_DOCUMENT_MAX_BYTES,
+            label="effects document",
+        )
+    else:
+        raw = _read_file_bounded(
+            arguments.effects,
+            EFFECT_DOCUMENT_MAX_BYTES,
+            label="effects document",
+        )
+    result = apply_effects(
+        _scope(arguments),
+        arguments.message_id,
+        parse_effect_document(raw),
+        claim_id=arguments.claim,
+    )
+    _emit(result, as_json=arguments.json)
+    return 0
+
+
+def _inbox_claim(arguments: argparse.Namespace) -> int:
+    claim = claim_message(
+        _scope(arguments),
+        owner_id=arguments.owner,
+        lease_seconds=arguments.lease_seconds,
+        message_id=arguments.message_id,
+    )
+    payload = {"claim": claim}
+    _emit(payload, as_json=arguments.json)
+    return 0
+
+
+def _inbox_dispose(arguments: argparse.Namespace) -> int:
+    result = dispose_message(
+        _scope(arguments),
+        arguments.message_id,
+        claim_id=arguments.claim,
+        disposition=arguments.disposition,
+        reason=arguments.reason,
+    )
+    _emit(result, as_json=arguments.json)
+    return 0
+
+
+def _claim_release(arguments: argparse.Namespace) -> int:
+    result = release_claim(_scope(arguments), arguments.claim_id)
+    _emit(result, as_json=arguments.json)
+    return 0
+
+
+def _task_list(arguments: argparse.Namespace) -> int:
+    tasks = list_tasks(
+        _scope(arguments),
+        states=set(arguments.state) if arguments.state else None,
+        limit=arguments.limit,
+    )
+    if arguments.json:
+        summaries = [
+            {
+                key: task[key]
+                for key in (
+                    "task_id",
+                    "revision",
+                    "state",
+                    "priority",
+                    "title",
+                    "blocked_by",
+                    "waiting_on",
+                )
+            }
+            for task in tasks
+        ]
+        _emit({"tasks": summaries}, as_json=True)
+        return 0
+    for task in tasks:
+        print(
+            f"{task['task_id']}\t{task['state']}\t"
+            f"r{task['revision']}\t{task['priority']}\t"
+            f"{_single_line(task['title'])}"
+        )
+    return 0
+
+
+def _task_show(arguments: argparse.Namespace) -> int:
+    task = show_task(_scope(arguments), arguments.task_id)
+    _emit(task, as_json=arguments.json)
+    return 0
+
+
+def _queue_next(arguments: argparse.Namespace) -> int:
+    tasks = claim_next_tasks(
+        _scope(arguments),
+        owner_id=arguments.owner,
+        lease_seconds=arguments.lease_seconds,
+        limit=arguments.limit,
+    )
+    if arguments.json:
+        _emit({"tasks": tasks}, as_json=True)
+        return 0
+    for item in tasks:
+        task = item["task"]
+        claim = item["claim"]
+        print(
+            f"{task['task_id']}\t{task['state']}\t"
+            f"r{task['revision']}\t{task['priority']}\t"
+            f"{claim['claim_id']}\t{_single_line(task['title'])}"
+        )
+    return 0
+
+
+def _queue_peek(arguments: argparse.Namespace) -> int:
+    tasks = next_tasks(_scope(arguments), limit=arguments.limit)
+    if arguments.json:
+        _emit({"tasks": tasks}, as_json=True)
+        return 0
+    for task in tasks:
+        print(
+            f"{task['task_id']}\t{task['state']}\t"
+            f"r{task['revision']}\t{task['priority']}\t"
+            f"{_single_line(task['title'])}"
+        )
+    return 0
+
+
+def _capability_list(arguments: argparse.Namespace) -> int:
+    capabilities = list_capabilities()
+    if arguments.json:
+        _emit({"capabilities": capabilities}, as_json=True)
+        return 0
+    for capability in capabilities:
+        print(f"{capability['id']}\t{capability['purpose']}")
+    return 0
+
+
+def _capability_show(arguments: argparse.Namespace) -> int:
+    capability = show_capability(arguments.capability_id)
+    if arguments.json:
+        _emit(capability, as_json=True)
+    else:
+        print(json.dumps(capability, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 
 
@@ -180,6 +390,87 @@ def build_parser() -> argparse.ArgumentParser:
     inbox_list.add_argument("--include-content", action="store_true")
     inbox_list.set_defaults(handler=_inbox_list)
 
+    inbox_apply = inbox_commands.add_parser("apply")
+    _add_scope_arguments(inbox_apply)
+    inbox_apply.add_argument("message_id")
+    inbox_apply.add_argument(
+        "--effects",
+        type=Path,
+        required=True,
+        help="effects JSON file, or - for stdin",
+    )
+    inbox_apply.add_argument("--claim", required=True)
+    inbox_apply.set_defaults(handler=_inbox_apply)
+
+    inbox_claim = inbox_commands.add_parser("claim")
+    _add_scope_arguments(inbox_claim)
+    inbox_claim.add_argument("message_id", nargs="?")
+    inbox_claim.add_argument("--owner", required=True)
+    inbox_claim.add_argument("--lease-seconds", type=int, default=900)
+    inbox_claim.set_defaults(handler=_inbox_claim)
+
+    for command, disposition in (
+        ("needs-input", "needs_input"),
+        ("fail", "failed"),
+    ):
+        inbox_dispose = inbox_commands.add_parser(command)
+        _add_scope_arguments(inbox_dispose)
+        inbox_dispose.add_argument("message_id")
+        inbox_dispose.add_argument("--claim", required=True)
+        inbox_dispose.add_argument("--reason", required=True)
+        inbox_dispose.set_defaults(
+            handler=_inbox_dispose,
+            disposition=disposition,
+        )
+
+    task = commands.add_parser("task")
+    task_commands = task.add_subparsers(dest="task_command", required=True)
+
+    task_list = task_commands.add_parser("list")
+    _add_scope_arguments(task_list)
+    task_list.add_argument("--state", action="append", choices=TASK_STATES)
+    task_list.add_argument("--limit", type=int, default=100)
+    task_list.set_defaults(handler=_task_list)
+
+    task_show = task_commands.add_parser("show")
+    _add_scope_arguments(task_show)
+    task_show.add_argument("task_id")
+    task_show.set_defaults(handler=_task_show)
+
+    queue = commands.add_parser("queue")
+    queue_commands = queue.add_subparsers(dest="queue_command", required=True)
+    queue_next = queue_commands.add_parser("next")
+    _add_scope_arguments(queue_next)
+    queue_next.add_argument("--owner", required=True)
+    queue_next.add_argument("--lease-seconds", type=int, default=900)
+    queue_next.add_argument("--limit", type=int, default=1)
+    queue_next.set_defaults(handler=_queue_next)
+
+    queue_peek = queue_commands.add_parser("peek")
+    _add_scope_arguments(queue_peek)
+    queue_peek.add_argument("--limit", type=int, default=1)
+    queue_peek.set_defaults(handler=_queue_peek)
+
+    claim = commands.add_parser("claim")
+    claim_commands = claim.add_subparsers(dest="claim_command", required=True)
+    claim_release = claim_commands.add_parser("release")
+    _add_scope_arguments(claim_release)
+    claim_release.add_argument("claim_id")
+    claim_release.set_defaults(handler=_claim_release)
+
+    capability = commands.add_parser("capability")
+    capability_commands = capability.add_subparsers(
+        dest="capability_command",
+        required=True,
+    )
+    capability_list = capability_commands.add_parser("list")
+    capability_list.add_argument("--json", action="store_true")
+    capability_list.set_defaults(handler=_capability_list)
+    capability_show = capability_commands.add_parser("show")
+    capability_show.add_argument("capability_id")
+    capability_show.add_argument("--json", action="store_true")
+    capability_show.set_defaults(handler=_capability_show)
+
     return parser
 
 
@@ -198,12 +489,16 @@ def main() -> int:
         if getattr(arguments, "json", False):
             print(
                 json.dumps(
-                    {"error": str(error), "status": "error"},
+                    {
+                        "code": "aiq_error",
+                        "error": str(error),
+                        "status": "error",
+                    },
                     sort_keys=True,
                     separators=(",", ":"),
                 ),
                 file=sys.stderr,
             )
         else:
-            print(f"aiq: {error}", file=sys.stderr)
+            print(f"aiq: {_single_line(str(error))}", file=sys.stderr)
         return 1

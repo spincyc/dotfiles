@@ -2,6 +2,13 @@
 
 Universal rules for work governed by this guidance set.
 
+## Operating motives
+
+- Thrift: never spend a scarce resource twice: compute/flow, context/stock, or
+  user time/stalls.
+- Determinism: codified answers repeat; re-derived ones drift. Turn settled,
+  repeatable reasoning into local tools, tests, or configuration.
+
 ## Authority and scope
 
 - Follow system and developer instructions before this guidance.
