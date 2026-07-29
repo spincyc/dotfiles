@@ -20,9 +20,9 @@ opt-in desktop overlays:
   the guidance root; bootstrap files defer to `AI_GUIDANCE.md`.
 - `tools/`, `Makefile`: repository verification; `make verify` is the
   authoritative check battery.
-- `.claude/settings.json` and other agent host configuration: managed base
-  settings only; installed integrations layer tool-owned hook groups onto the
-  live files.
+- `claude/settings.json`: seed for `~/.claude/settings.json`, copied only
+  when absent; Claude Code and installed integrations own the live file, so
+  never link or overwrite it.
 - `README.md`: setup, synchronization, and local overrides.
 
 Exclude AIQ runtime state, credentials, private host identity, generated

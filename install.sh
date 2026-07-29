@@ -176,9 +176,14 @@ AI_GUIDANCE.md:.codex/AGENTS.md
 ai-guidance:.codex/ai-guidance
 AI_GUIDANCE.md:.claude/CLAUDE.md
 ai-guidance:.claude/ai-guidance
-.claude/settings.json:.claude/settings.json
 AI_GUIDANCE.md:.gemini/GEMINI.md
 ai-guidance:.gemini/ai-guidance
+"
+
+# Seeds are copied once when the target is absent and never overwritten:
+# Claude Code and installed tool integrations own the live file afterward.
+managed_seeds="
+claude/settings.json:.claude/settings.json
 "
 
 require_command() {
@@ -510,6 +515,33 @@ run_core_profile() {
     fi
 
     install_core_link "$source_path" "$target_path" "$target_name"
+  done
+}
+
+run_core_seeds() {
+  for managed_seed in $managed_seeds; do
+    seed_source_name=${managed_seed%%:*}
+    seed_target_name=${managed_seed#*:}
+    seed_source_path="$repo_dir/$seed_source_name"
+    seed_target_path="$HOME/$seed_target_name"
+
+    [ -f "$seed_source_path" ] ||
+      die "missing seed source: $seed_source_path"
+
+    if [ -e "$seed_target_path" ] || [ -L "$seed_target_path" ]; then
+      printf 'ok       %s\n' "$seed_target_path"
+      continue
+    fi
+
+    if [ "$mode" = check ]; then
+      printf 'unseeded %s\n' "$seed_target_path"
+      failed=1
+      continue
+    fi
+
+    prepare_core_target_parent "$seed_target_name" 1
+    cp -- "$seed_source_path" "$seed_target_path"
+    printf 'seeded   %s\n' "$seed_target_path"
   done
 }
 
@@ -942,6 +974,7 @@ fi
 # The portable core is always applied last so vendor installers cannot reclaim
 # the clean repository-managed shell configuration.
 run_core_profile
+run_core_seeds
 
 if [ "$mode" = check ]; then
   exit "$failed"

@@ -213,9 +213,12 @@ Repository compatibility files expose the same entry point to agents that
 automatically discover `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or GitHub
 Copilot instructions.
 
-The installer also manages `~/.claude/settings.json`. It preserves the chosen
-model and theme and sets Claude Code's maximum parallel read-only tools and
-subagents to 64 through `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY`.
+The installer seeds `~/.claude/settings.json` from `claude/settings.json`
+only when it does not exist and never overwrites it: Claude Code rewrites the
+live file in place, and the AIQ and tmt integrations layer their own hook
+groups onto it, so the live copy is runtime state that must not be symlinked
+or reclaimed. `tools/claude-settings-check` reports drift between the seed's
+base keys and the live file.
 
 After pulling the document split for the first time, rerun `./install.sh` to
 create the managed feature-directory links. For an agent that does not
