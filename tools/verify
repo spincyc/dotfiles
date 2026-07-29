@@ -3,7 +3,9 @@
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 
 
@@ -115,6 +117,16 @@ def check_guidance_index() -> None:
         )
 
 
+def check_tool_registry() -> None:
+    if not (REPO_ROOT / "tmt.json").exists():
+        return
+    tmt = shutil.which("tmt") or str(Path.home() / ".local" / "bin" / "tmt")
+    if not os.access(tmt, os.X_OK):
+        print("skip check_tool_registry: tmt unavailable")
+        return
+    run([tmt, "check"])
+
+
 def check_profile() -> None:
     run(["git", "diff", "--check", "HEAD"])
     run(["sh", "-n", "install.sh"])
@@ -146,10 +158,15 @@ def check_profile() -> None:
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] in ("--help", "-h"):
+        print("Usage: tools/verify")
+        print("Run the repository verification battery; see the Makefile.")
+        return 0
     checks = [
         check_arch_packages,
         check_bootstrap_budget,
         check_guidance_index,
+        check_tool_registry,
         check_tracked_paths,
         check_profile,
     ]

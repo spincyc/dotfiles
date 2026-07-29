@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Report drift between the Claude settings seed and the live user settings
+
+Usage: tools/claude-settings-check [--json]
+"""
+# Composition idiom: run a sibling tool with
+#     subprocess.run([str(Path(__file__).parent / "<dep>"), ...], check=True)
+# and declare "<dep>" in this tool's `requires` list in tmt.json.
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+
+PROTOCOL_VERSION = 1
+
+
+def run() -> dict[str, object]:
+    """Compare the seed's base keys (everything but hooks) to the live file."""
+    repo_root = Path(__file__).resolve().parent.parent
+    seed_path = repo_root / "claude" / "settings.json"
+    live_path = Path.home() / ".claude" / "settings.json"
+
+    seed = json.loads(seed_path.read_text())
+    compared = {key: value for key, value in seed.items() if key != "hooks"}
+
+    if not live_path.exists():
+        return {
+            "clean": False,
+            "drifted": sorted(compared),
+            "live": str(live_path),
+            "live_exists": False,
+            "seed": str(seed_path),
+        }
+
+    live = json.loads(live_path.read_text())
+    drifted = sorted(
+        key for key, value in compared.items() if live.get(key) != value
+    )
+    return {
+        "clean": not drifted,
+        "drifted": drifted,
+        "live": str(live_path),
+        "live_exists": True,
+        "seed": str(seed_path),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="claude-settings-check",
+        description="Report drift between the Claude settings seed and the live user settings",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit one compact key-sorted JSON object (cli-v1)",
+    )
+    arguments = parser.parse_args(argv)
+    try:
+        payload = run()
+    except Exception as error:
+        # cli-v1 error contract: exactly one compact key-sorted JSON object
+        # on stderr, nothing on stdout, stable code plus exit category.
+        message = str(error) or error.__class__.__name__
+        if arguments.json:
+            print(
+                json.dumps(
+                    {
+                        "code": "internal",
+                        "error": message,
+                        "status": "error",
+                        "v": PROTOCOL_VERSION,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                file=sys.stderr,
+            )
+        else:
+            print(f"claude-settings-check: {message}", file=sys.stderr)
+        return 70
+    if arguments.json:
+        print(
+            json.dumps(
+                {**payload, "v": PROTOCOL_VERSION},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+        return 0
+    for key, value in payload.items():
+        print(f"{key}\t{value}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

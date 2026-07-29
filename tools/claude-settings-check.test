@@ -1,0 +1,46 @@
+#!/bin/sh
+# Test for tools/claude-settings-check: exit 0 = pass (the stable gate).
+# Only --help exits 0 is universally guaranteed by the tool contract;
+# every other assertion is tool-specific. Write real ones below — the
+# stable gate refuses to promote while this file is the unmodified
+# scaffold.
+set -eu
+
+# Resolved sibling path: keeps working after a cd into a sandbox.
+tool="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/claude-settings-check"
+
+# --help always works.
+"$tool" --help >/dev/null
+
+# Drift assertions run against a fabricated HOME, never the real one.
+sandbox="$(mktemp -d)"
+trap 'rm -rf "$sandbox"' EXIT INT TERM
+seed_dir="$(CDPATH= cd -- "$(dirname -- "$tool")/.." && pwd)"
+
+# A missing live file reports not clean.
+HOME="$sandbox" "$tool" --json > "$sandbox/out.json"
+grep -q '"v":1' "$sandbox/out.json"
+grep -q '"live_exists":false' "$sandbox/out.json"
+grep -q '"clean":false' "$sandbox/out.json"
+
+# An exact copy of the seed is clean.
+mkdir -p "$sandbox/.claude"
+cp -- "$seed_dir/claude/settings.json" "$sandbox/.claude/settings.json"
+HOME="$sandbox" "$tool" --json | grep -q '"clean":true'
+
+# A changed base key drifts; added hook groups do not.
+python3 - "$sandbox/.claude/settings.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path) as handle:
+    data = json.load(handle)
+data["theme"] = "drift-test"
+data["hooks"] = {"Stop": []}
+with open(path, "w") as handle:
+    json.dump(data, handle)
+PY
+HOME="$sandbox" "$tool" --json > "$sandbox/out.json"
+grep -q '"clean":false' "$sandbox/out.json"
+grep -q '"drifted":\["theme"\]' "$sandbox/out.json"

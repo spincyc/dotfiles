@@ -1,6 +1,12 @@
 #!/bin/sh
 set -eu
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  printf 'Usage: tools/sanity-check\n'
+  printf 'Check required host commands exist before the full battery.\n'
+  exit 0
+fi
+
 missing_packages=
 
 check_command() {

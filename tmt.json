@@ -1,0 +1,38 @@
+{
+  "tools": {
+    "sanity-check": {
+      "idempotent": true,
+      "json": false,
+      "lang": "sh",
+      "mutates": false,
+      "origin": "local",
+      "purpose": "Verify required host commands exist before running make verify",
+      "requires": [],
+      "stage": "draft",
+      "usage": "tools/sanity-check"
+    },
+    "verify": {
+      "idempotent": true,
+      "json": false,
+      "lang": "python",
+      "mutates": false,
+      "origin": "local",
+      "purpose": "Run the repository verification battery",
+      "requires": [],
+      "stage": "draft",
+      "usage": "tools/verify"
+    },
+    "claude-settings-check": {
+      "idempotent": true,
+      "json": true,
+      "lang": "python",
+      "mutates": false,
+      "origin": "local",
+      "purpose": "Report drift between the Claude settings seed and the live user settings",
+      "requires": [],
+      "stage": "stable",
+      "usage": "tools/claude-settings-check [--json]"
+    }
+  },
+  "v": 1
+}
