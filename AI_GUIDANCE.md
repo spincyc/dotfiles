@@ -15,10 +15,12 @@ Read applicable documents completely and in numeric order:
 1. [`00-core.md`](ai-guidance/00-core.md) — always.
 2. [`05-general.md`](ai-guidance/05-general.md) — always.
 3. [`10-journal.md`](ai-guidance/10-journal.md) — always.
-4. [`20-sub-agent-scheduling.md`](ai-guidance/20-sub-agent-scheduling.md) —
+4. [`15-tool-making.md`](ai-guidance/15-tool-making.md) — when tmt is
+   available.
+5. [`20-sub-agent-scheduling.md`](ai-guidance/20-sub-agent-scheduling.md) —
    when sub-agent tools are available.
-5. [`30-collaboration.md`](ai-guidance/30-collaboration.md) — always.
-6. [`40-dotfiles-repository.md`](ai-guidance/40-dotfiles-repository.md) — only
+6. [`30-collaboration.md`](ai-guidance/30-collaboration.md) — always.
+7. [`40-dotfiles-repository.md`](ai-guidance/40-dotfiles-repository.md) — only
    when dotfiles is the active repository.
 
 These documents are additive within their declared scopes. Numeric order
