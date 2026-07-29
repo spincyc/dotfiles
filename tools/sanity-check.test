@@ -1,0 +1,12 @@
+#!/bin/sh
+# Test for tools/sanity-check: exit 0 = pass (the stable gate).
+set -eu
+
+tool="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/sanity-check"
+
+# --help always works and does not probe the host.
+"$tool" --help >/dev/null
+"$tool" -h >/dev/null
+
+# On a host that just ran the battery, the probe itself passes.
+"$tool" >/dev/null

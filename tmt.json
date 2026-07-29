@@ -1,27 +1,5 @@
 {
   "tools": {
-    "sanity-check": {
-      "idempotent": true,
-      "json": false,
-      "lang": "sh",
-      "mutates": false,
-      "origin": "local",
-      "purpose": "Verify required host commands exist before running make verify",
-      "requires": [],
-      "stage": "draft",
-      "usage": "tools/sanity-check"
-    },
-    "verify": {
-      "idempotent": true,
-      "json": false,
-      "lang": "python",
-      "mutates": false,
-      "origin": "local",
-      "purpose": "Run the repository verification battery",
-      "requires": [],
-      "stage": "draft",
-      "usage": "tools/verify"
-    },
     "claude-settings-check": {
       "idempotent": true,
       "json": true,
@@ -32,6 +10,28 @@
       "requires": [],
       "stage": "stable",
       "usage": "tools/claude-settings-check [--json]"
+    },
+    "sanity-check": {
+      "idempotent": true,
+      "json": false,
+      "lang": "sh",
+      "mutates": false,
+      "origin": "local",
+      "purpose": "Verify required host commands exist before running make verify",
+      "requires": [],
+      "stage": "stable",
+      "usage": "tools/sanity-check"
+    },
+    "verify": {
+      "idempotent": true,
+      "json": false,
+      "lang": "python",
+      "mutates": false,
+      "origin": "local",
+      "purpose": "Run the repository verification battery",
+      "requires": [],
+      "stage": "stable",
+      "usage": "tools/verify"
     }
   },
   "v": 1

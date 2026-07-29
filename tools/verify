@@ -92,6 +92,44 @@ def check_tracked_paths() -> None:
         )
 
 
+def check_bootstrap_files() -> None:
+    entry_points = [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "GEMINI.md",
+        ".github/copilot-instructions.md",
+    ]
+    for name in entry_points:
+        path = REPO_ROOT / name
+        if not path.is_file():
+            raise RuntimeError(f"bootstrap entry point is missing: {name}")
+        text = path.read_text()
+        if "AI_GUIDANCE.md" not in text:
+            raise RuntimeError(f"{name} does not link AI_GUIDANCE.md")
+        word_count = len(text.split())
+        if word_count > 60:
+            raise RuntimeError(
+                f"{name} has {word_count} words; bootstrap files stay under 60"
+            )
+
+
+def check_guidance_crossrefs() -> None:
+    tracked = {
+        path.split("/", 1)[1]
+        for path in run(["git", "ls-files", "-z", "--", "ai-guidance"]).split("\0")
+        if path.endswith(".md")
+    }
+    sources = [REPO_ROOT / "AI_GUIDANCE.md"] + sorted(
+        (REPO_ROOT / "ai-guidance").glob("*.md")
+    )
+    for source in sources:
+        for ref in re.findall(r"\b(\d{2}-[a-z-]+\.md)\b", source.read_text()):
+            if ref not in tracked:
+                raise RuntimeError(
+                    f"{source.name} references untracked document {ref}"
+                )
+
+
 def check_guidance_index() -> None:
     tracked = sorted(
         path.split("/", 1)[1]
@@ -165,17 +203,28 @@ def check_profile() -> None:
 
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] in ("--help", "-h"):
-        print("Usage: tools/verify")
+        print("Usage: tools/verify [--only CHECK ...]")
         print("Run the repository verification battery; see the Makefile.")
+        print("CHECK names drop the check_ prefix, e.g. --only guidance_index")
         return 0
     checks = [
         check_arch_packages,
         check_bootstrap_budget,
+        check_bootstrap_files,
+        check_guidance_crossrefs,
         check_guidance_index,
         check_tool_registry,
         check_tracked_paths,
         check_profile,
     ]
+    if len(sys.argv) > 2 and sys.argv[1] == "--only":
+        wanted = set(sys.argv[2:])
+        by_name = {check.__name__.removeprefix("check_"): check for check in checks}
+        unknown = wanted - by_name.keys()
+        if unknown:
+            print(f"FAIL unknown checks: {', '.join(sorted(unknown))}")
+            return 1
+        checks = [by_name[name] for name in by_name if name in wanted]
     failures: list[str] = []
 
     for check in checks:

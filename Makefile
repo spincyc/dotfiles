@@ -10,7 +10,7 @@ ARCH_PACKAGES := \
   tmux \
   zsh
 
-.PHONY: install-packages sanity-check verify
+.PHONY: install-packages sanity-check verify verify-guidance
 
 install-packages:
 	sudo pacman -S --needed -- $(ARCH_PACKAGES)
@@ -20,3 +20,7 @@ sanity-check:
 
 verify: sanity-check
 	./tools/verify
+
+verify-guidance:
+	./tools/verify --only bootstrap_budget bootstrap_files guidance_crossrefs \
+	  guidance_index
