@@ -84,6 +84,37 @@ def check_tracked_paths() -> None:
         raise RuntimeError(f"journal paths are tracked: {', '.join(forbidden)}")
 
 
+def check_guidance_index() -> None:
+    tracked = sorted(
+        path.split("/", 1)[1]
+        for path in run(["git", "ls-files", "-z", "--", "ai-guidance"]).split("\0")
+        if path.endswith(".md")
+    )
+    entries = re.findall(
+        r"^(\d+)\. \[`([^`]+)`\]\(ai-guidance/([^)]+)\)(.*?)(?=^\d+\. |\n\n)",
+        BOOTSTRAP_PATH.read_text(),
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    listed = [entry[1] for entry in entries]
+
+    for number, name, target, scope in entries:
+        if name != target:
+            raise RuntimeError(f"index entry {name} links to {target}")
+        if "—" not in scope:
+            raise RuntimeError(f"index entry {name} lacks a scope annotation")
+    if [int(entry[0]) for entry in entries] != list(range(1, len(entries) + 1)):
+        raise RuntimeError("index entries are not numbered sequentially")
+    if listed != sorted(listed):
+        raise RuntimeError("index entries are not in numeric-prefix order")
+    if listed != tracked:
+        missing = set(tracked) - set(listed)
+        extra = set(listed) - set(tracked)
+        raise RuntimeError(
+            "index and tracked ai-guidance files differ: "
+            f"unlisted={sorted(missing)} untracked={sorted(extra)}"
+        )
+
+
 def check_profile() -> None:
     run(["git", "diff", "--check", "HEAD"])
     run(["sh", "-n", "install.sh"])
@@ -118,6 +149,7 @@ def main() -> int:
     checks = [
         check_arch_packages,
         check_bootstrap_budget,
+        check_guidance_index,
         check_tracked_paths,
         check_profile,
     ]
