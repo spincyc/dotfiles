@@ -6,6 +6,8 @@ guidance symlink resolving here does not make dotfiles active.
 Treat this repository as a small portable terminal profile with explicit,
 opt-in desktop overlays:
 
+- `.zshenv`: environment for every Zsh invocation; keeps `~/.local/bin` on
+  `PATH` in non-interactive shells.
 - `.zshrc`: interactive Zsh; Oh My Zsh is optional.
 - `.tmux.conf`: portable tmux defaults and bindings.
 - `install.sh`: backs up conflicts, links the portable core, and deploys

@@ -87,6 +87,7 @@ def check_tracked_paths() -> None:
 def check_profile() -> None:
     run(["git", "diff", "--check", "HEAD"])
     run(["sh", "-n", "install.sh"])
+    run(["zsh", "-n", ".zshenv"])
     run(["zsh", "-n", ".zshrc"])
 
     tmux_socket = f"dotfiles-check-{os.getpid()}"

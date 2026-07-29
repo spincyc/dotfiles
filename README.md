@@ -155,6 +155,11 @@ files.
 Put machine-specific settings and secrets in `~/.zshrc.local`. That file is
 loaded automatically and must not be committed.
 
+The managed `.zshenv` prepends `~/.local/bin` to `PATH` for every Zsh
+invocation, so pipx-installed tools such as `aiq` and `tmt` resolve in
+non-interactive shells, hooks, and agent sessions, not only in interactive
+terminals.
+
 Keep credentials, SSH keys, shell history, caches, and generated completion
 files outside this repository.
 

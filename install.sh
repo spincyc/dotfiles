@@ -166,6 +166,7 @@ git@github.com:spincyc/dotfiles.git)
 fi
 
 managed_links="
+.zshenv:.zshenv
 .zshrc:.zshrc
 .tmux.conf:.tmux.conf
 .gitconfig:.gitconfig
