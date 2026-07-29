@@ -34,7 +34,9 @@ Universal rules for work governed by this guidance set.
 - Diagnosis does not authorize a fix unless the request includes one.
 - A request to change or build authorizes normal in-scope implementation and
   verification, not pushing, publishing, merging, rewriting history, or other
-  external consequences unless the user also authorizes them.
+  external consequences unless the user also authorizes them. In the user's
+  own repositories, committing integrated work to the intended local branch
+  is part of normal implementation; pushing still needs authorization.
 - Preserve unrelated user work, secrets, credentials, and existing history.
   Inspect repository state before overlapping mutations.
 - Prefer the smallest coherent diff that achieves the requested outcome.
@@ -55,7 +57,8 @@ Universal rules for work governed by this guidance set.
 - Use the smallest relevant verification and report unavailable checks
   accurately. Do not manufacture completion or conceal skipped verification.
 - Completion means the requested result is verified and integrated into its
-  intended local target; the working tree is clean; task-created temporary
+  intended local target; the working tree holds nothing beyond the delivered
+  change, committed where committing is authorized; task-created temporary
   branches, worktrees, directories, and processes are removed unless the user
   requested retention; and, where a local work ledger is in use, outcomes are
   recorded and held claims are completed or released (see `10-journal.md`).

@@ -1,7 +1,8 @@
 # Sub-agent scheduling
 
-Apply this document only when sub-agent tools are available. Delegation remains
-subject to higher-authority permission, user scope, safety, and dependencies.
+Read this document before the first delegation decision of a session; it need
+not load earlier. Delegation remains subject to higher-authority permission,
+user scope, safety, and dependencies.
 
 At initial scheduling, after context recovery, when permission changes, and
 when an agent finishes, blocks, or reveals follow-up work:

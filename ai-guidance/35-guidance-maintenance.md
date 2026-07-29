@@ -1,7 +1,7 @@
 # Guidance maintenance
 
-Apply this document when editing files under the guidance root, whichever
-repository is active.
+Apply these rules when editing the guidance file set — `AI_GUIDANCE.md`,
+`ai-guidance/`, or a bootstrap entry point — whichever repository is active.
 
 - Guidance edits target the resolved guidance root; their intended local
   target, per completion in `00-core.md`, is dotfiles local `main` even when

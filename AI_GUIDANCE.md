@@ -17,10 +17,10 @@ Read applicable documents completely and in numeric order:
 3. [`15-tool-making.md`](ai-guidance/15-tool-making.md) — when the active
    repository has a root `tmt.json` or tmt is available.
 4. [`20-sub-agent-scheduling.md`](ai-guidance/20-sub-agent-scheduling.md) —
-   when sub-agent tools are available.
+   before the first delegation decision.
 5. [`30-collaboration.md`](ai-guidance/30-collaboration.md) — always.
 6. [`35-guidance-maintenance.md`](ai-guidance/35-guidance-maintenance.md) —
-   when editing files under the guidance root.
+   always.
 7. [`40-dotfiles-repository.md`](ai-guidance/40-dotfiles-repository.md) — only
    when dotfiles is the active repository.
 
@@ -28,8 +28,9 @@ Read applicable documents completely and in numeric order:
 
 A CLI tool is available when `command -v` finds it or
 `$HOME/.local/bin/<tool>` is executable; after a `PATH` miss, keep invoking
-the absolute path. Sub-agent availability is a property of the harness tool
-list, not the shell.
+the absolute path. Sub-agent and harness-tool availability follow the
+session's tool roster: a tool listed by name counts, even when its schema
+loads on demand.
 
 These documents are additive within their declared scopes. Numeric order
 controls reading, not precedence; contradiction disposition is owned by
