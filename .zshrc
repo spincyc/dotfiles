@@ -4,6 +4,9 @@
 export EDITOR="${EDITOR:-vim}"
 export VISUAL="${VISUAL:-$EDITOR}"
 
+typeset -U path PATH
+path=("$HOME/.local/bin" $path)
+
 HISTFILE="${ZDOTDIR:-$HOME}/.zsh_history"
 HISTSIZE=50000
 SAVEHIST=50000
