@@ -1,0 +1,33 @@
+#!/bin/sh
+set -eu
+
+missing_packages=
+
+check_command() {
+  command_name=$1
+  package_name=$2
+
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    missing_packages="${missing_packages}${missing_packages:+
+}${package_name}"
+  fi
+}
+
+check_command curl curl
+check_command git git
+check_command make make
+check_command node nodejs
+check_command python3 python
+check_command rg ripgrep
+check_command sqlite3 sqlite
+check_command tmux tmux
+check_command zsh zsh
+
+if [ -n "$missing_packages" ]; then
+  printf 'Missing required Arch packages:\n' >&2
+  printf '  %s\n' $missing_packages >&2
+  printf 'Run `make install-packages`, then rerun `make sanity-check`.\n' >&2
+  exit 1
+fi
+
+printf 'Sanity check passed.\n'

@@ -13,7 +13,7 @@ checkout does not make dotfiles the active repository.
 Read applicable documents completely and in numeric order:
 
 1. [`00-core.md`](ai-guidance/00-core.md) — always.
-2. [`05-interaction.md`](ai-guidance/05-interaction.md) — always.
+2. [`05-general.md`](ai-guidance/05-general.md) — always.
 3. [`10-journal.md`](ai-guidance/10-journal.md) — when the active repository
    contains `.journal/README.md` or the task changes journal guidance.
 4. [`20-sub-agent-scheduling.md`](ai-guidance/20-sub-agent-scheduling.md) —

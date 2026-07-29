@@ -62,6 +62,23 @@ loaded automatically and must not be committed.
 Keep credentials, SSH keys, shell history, caches, and generated completion
 files outside this repository.
 
+## Local verification
+
+On Arch Linux, install every declared dependency:
+
+```sh
+make install-packages
+```
+
+Agents add newly required packages to the Makefile but leave this privileged
+target for the user to run. Check the local environment and run the complete
+verification suite with:
+
+```sh
+make sanity-check
+make verify
+```
+
 ## AI-assisted contributions
 
 [`AI_GUIDANCE.md`](AI_GUIDANCE.md) is the mandatory tool-neutral entry point

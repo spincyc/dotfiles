@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+
+import os
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+BOOTSTRAP_PATH = REPO_ROOT / "AI_GUIDANCE.md"
+BOOTSTRAP_WARNING_WORDS = 225
+BOOTSTRAP_MAX_WORDS = 250
+
+
+def run(command: list[str], *, env: dict[str, str] | None = None) -> str:
+    result = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode:
+        output = result.stdout.strip()
+        raise RuntimeError(
+            f"command failed ({result.returncode}): {' '.join(command)}"
+            + (f"\n{output}" if output else "")
+        )
+    return result.stdout
+
+
+def check_arch_packages() -> None:
+    lines = (REPO_ROOT / "Makefile").read_text().splitlines()
+    start = lines.index("ARCH_PACKAGES := \\")
+    package_lines: list[str] = []
+
+    for line in lines[start + 1 :]:
+        if not line.startswith("  "):
+            break
+        package_lines.append(line)
+
+    if not package_lines:
+        raise RuntimeError("ARCH_PACKAGES must contain at least one package")
+
+    packages: list[str] = []
+    for index, line in enumerate(package_lines):
+        is_last = index == len(package_lines) - 1
+        expected = r"  ([a-z0-9][a-z0-9@._+-]*)" + (r" \\" if not is_last else "")
+        match = re.fullmatch(expected, line)
+        if not match:
+            raise RuntimeError(
+                "list each Arch package on its own line in ARCH_PACKAGES"
+            )
+        packages.append(match.group(1))
+
+    if packages != sorted(set(packages)):
+        raise RuntimeError("ARCH_PACKAGES must be sorted and contain no duplicates")
+
+
+def check_bootstrap_budget() -> None:
+    word_count = len(BOOTSTRAP_PATH.read_text().split())
+    if word_count > BOOTSTRAP_MAX_WORDS:
+        raise RuntimeError(
+            f"{BOOTSTRAP_PATH.name} has {word_count} words; "
+            f"maximum is {BOOTSTRAP_MAX_WORDS}"
+        )
+    if word_count >= BOOTSTRAP_WARNING_WORDS:
+        raise RuntimeError(
+            f"{BOOTSTRAP_PATH.name} has {word_count} words; "
+            "discuss simplification before changing it further"
+        )
+
+
+def check_tracked_paths() -> None:
+    tracked = run(["git", "ls-files", "-z"]).split("\0")
+    forbidden = [
+        path
+        for path in tracked
+        if path == ".journal" or path.startswith(".journal/")
+    ]
+    if forbidden:
+        raise RuntimeError(f"journal paths are tracked: {', '.join(forbidden)}")
+
+
+def check_profile() -> None:
+    run(["git", "diff", "--check", "HEAD"])
+    run(["sh", "-n", "install.sh"])
+    run(["zsh", "-n", ".zshrc"])
+
+    tmux_socket = f"dotfiles-check-{os.getpid()}"
+    run(
+        [
+            "tmux",
+            "-L",
+            tmux_socket,
+            "-f",
+            str(REPO_ROOT / ".tmux.conf"),
+            "new-session",
+            "-d",
+        ]
+    )
+    try:
+        run(["tmux", "-L", tmux_socket, "kill-server"])
+    except RuntimeError:
+        pass
+
+    with tempfile.TemporaryDirectory() as install_home:
+        install_env = os.environ.copy()
+        install_env["HOME"] = install_home
+        run(["./install.sh"], env=install_env)
+        run(["./install.sh", "--check"], env=install_env)
+
+
+def main() -> int:
+    checks = [
+        check_arch_packages,
+        check_bootstrap_budget,
+        check_tracked_paths,
+        check_profile,
+    ]
+    failures: list[str] = []
+
+    for check in checks:
+        try:
+            check()
+        except (RuntimeError, ValueError) as error:
+            failures.append(f"{check.__name__}: {error}")
+
+    if failures:
+        for failure in failures:
+            print(f"FAIL {failure}")
+        return 1
+
+    print("Verification passed.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
