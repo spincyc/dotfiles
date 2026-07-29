@@ -1307,6 +1307,7 @@ def create_snapshot(
 def check_journal(scope: JournalScope) -> dict[str, Any]:
     if not scope.journal_path.exists():
         raise JournalError(f"journal does not exist: {scope.journal_path}")
+    initialize_journal(scope)
 
     connection = sqlite3.connect(scope.journal_path, timeout=10)
     try:

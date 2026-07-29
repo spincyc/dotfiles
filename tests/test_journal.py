@@ -253,7 +253,7 @@ class JournalTest(unittest.TestCase):
                 connection.close()
             scope.journal_path.chmod(0o600)
 
-            initialize_journal(scope)
+            check_result = check_journal(scope)
 
             migrated = sqlite3.connect(scope.journal_path)
             try:
@@ -276,6 +276,7 @@ class JournalTest(unittest.TestCase):
                 migrated.close()
 
             self.assertEqual(metadata["schema_version"], str(SCHEMA_VERSION))
+            self.assertEqual(check_result["schema_version"], SCHEMA_VERSION)
             self.assertEqual(content, "preserve exactly")
             self.assertEqual(event, "evt_existing")
             self.assertEqual(migration[:2], (1, 2))
