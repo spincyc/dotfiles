@@ -1,0 +1,250 @@
+{
+  "hyprland/workspaces": {
+    "on-scroll-up": "hyprctl dispatch workspace r-1",
+    "on-scroll-down": "hyprctl dispatch workspace r+1",
+    "on-click": "activate",
+    "active-only": false,
+    "all-outputs": true,
+    "format": "{}",
+    "format-icons": {
+      "urgent": "",
+      "active": "",
+      "default": ""
+    },
+    "persistent-workspaces": {
+      "*": 5
+    }
+  },
+  "custom/ml4w-welcome": {
+    "on-click": "qs ipc call sidebar toggle",
+    "on-click-right": "qs ipc call welcome toggle",
+    "format": " ",
+    "tooltip-format": "Left: Open ML4W Sidebar\nRight: Open ML4W Welcome App"
+  },
+  "custom/empty": {
+    "format": ""
+  },
+  "custom/tools": {
+    "format": "",
+    "tooltip-format": "Tools",
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+  "custom/cliphist": {
+    "format": "",
+    "on-click": "sleep 0.1 && ~/.config/ml4w/scripts/ml4w-cliphist",
+    "on-click-right": "sleep 0.1 && ~/.config/ml4w/scripts/ml4w-cliphist d",
+    "on-click-middle": "sleep 0.1 && ~/.config/ml4w/scripts/ml4w-cliphist w",
+    "tooltip-format": "Left: Open clipboard manager\nRight: Delete an entry\nMiddle: Clear list",
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+  "custom/updates": {
+    "format": "  {}",
+    "escape": true,
+    "return-type": "json",
+    "exec": "~/.config/ml4w/scripts/ml4w-check-system-updates",
+    "interval": 1800,
+    "signal": 1,
+    "hide-empty-text": true,
+    "on-click": "~/.config/ml4w/settings/installupdates.sh",
+    "on-click-right": "~/.config/ml4w/settings/software.sh"
+  },
+  "custom/appmenu": {
+    "format": "Apps",
+    "on-click": "~/.config/hypr/scripts/launcher.sh",
+    "on-click-right": "~/.config/hypr/scripts/keybindings.sh",
+    "tooltip-format": "Left: Open the application launcher\nRight: Show all keybindings"
+  },
+  "custom/exit": {
+    "format": "",
+    "on-click": "qs ipc call power toggle",
+    "tooltip-format": "Open Power Menu"
+  },
+  "custom/notification": {
+    "tooltip-format": "Left: Notifications\nRight: Do not disturb",
+    "format": "{icon}",
+    "format-icons": {
+      "notification": "notifications_active",
+      "none": "notifications",
+      "dnd-notification": "notifications_active",
+      "dnd-none": "notifications_paused",
+      "inhibited-notification": "notification_important",
+      "inhibited-none": "notification_important",
+      "dnd-inhibited-notification": "notification_off",
+      "dnd-inhibited-none": "notifications_off"
+    },
+    "return-type": "json",
+    "exec-if": "which swaync-client",
+    "exec": "swaync-client -swb",
+    "on-click": "swaync-client -t -sw",
+    "on-click-right": "swaync-client -d -sw",
+    "escape": true
+  },
+  "custom/hyprshade": {
+    "format": "",
+    "tooltip-format": "Toggle Screen Shader",
+    "on-click": "sleep 0.5; ~/.config/ml4w/scripts/ml4w-toggle-hyprsunset",
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+  "custom/hypridle": {
+    "format": "",
+    "return-type": "json",
+    "escape": true,
+    "exec-on-event": true,
+    "interval": 60,
+    "exec": "~/.config/hypr/scripts/hypridle.sh status",
+    "on-click": "~/.config/hypr/scripts/hypridle.sh toggle",
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+  "tray": {
+    "icon-size": 21,
+    "spacing": 10
+  },
+  "clock": {
+    "format": "{:%a %Y/%m/%d %H:%M}",
+    "on-click": "qs ipc call calendar toggle",
+    "timezone": "",
+    "tooltip": false
+  },
+  "custom/system": {
+    "format": "",
+    "tooltip": false,
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+  "cpu": {
+    "format": "/ C {usage}% ",
+    "on-click": "~/.config/ml4w/settings/system-monitor.sh",
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+  "memory": {
+    "format": "/ M {}% ",
+    "on-click": "~/.config/ml4w/settings/system-monitor.sh",
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+  "disk": {
+    "interval": 30,
+    "format": "D {percentage_used}% ",
+    "path": "/",
+    "on-click": "~/.config/ml4w/settings/system-monitor.sh",
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+  "hyprland/language": {
+    "format": "/ K {short}",
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+  "group/hardware": {
+    "orientation": "inherit",
+    "drawer": {
+      "transition-duration": 300,
+      "children-class": "not-memory",
+      "transition-left-to-right": false
+    },
+    "modules": [
+      "custom/system",
+      "disk",
+      "cpu",
+      "memory",
+      "hyprland/language"
+    ]
+  },
+  "group/tools": {
+    "orientation": "inherit",
+    "drawer": {
+      "transition-duration": 300,
+      "children-class": "not-memory",
+      "transition-left-to-right": false
+    },
+    "modules": [
+      "custom/tools",
+      "custom/cliphist",
+      "custom/hypridle",
+      "custom/hyprshade",
+      "power-profiles-daemon"
+    ]
+  },
+  "network": {
+    "format": "{ifname}",
+    "format-wifi": " {signalStrength}%",
+    "format-ethernet": "  {ifname}",
+    "format-disconnected": "Disconnected ⚠",
+    "tooltip-format": " {ifname} via {gwaddr}",
+    "tooltip-format-wifi": "  {ifname} @ {essid}\nIP: {ipaddr}\nStrength: {signalStrength}%\nFreq: {frequency}MHz\nUp: {bandwidthUpBits} Down: {bandwidthDownBits}",
+    "tooltip-format-ethernet": " {ifname}\nIP: {ipaddr}\nUp: {bandwidthUpBits} Down: {bandwidthDownBits}",
+    "tooltip-format-disconnected": "Disconnected",
+    "max-length": 50,
+    "on-click": "~/.config/ml4w/settings/networkmanager.sh",
+    "on-click-right": "~/.config/ml4w/scripts/nm-applet.sh toggle"
+  },
+  "battery": {
+    "interval": 1,
+    "states": {
+      "warning": 30,
+      "critical": 15
+    },
+    "format": "{icon} {capacity}%",
+    "format-charging": "  {capacity}%",
+    "format-plugged": "  {capacity}%",
+    "format-alt": "{icon}  {time}",
+    "format-icons": [
+      " ",
+      " ",
+      " ",
+      " ",
+      " "
+    ]
+  },
+  "power-profiles-daemon": {
+    "format": "{icon}",
+    "tooltip-format": "Power profile: {profile}\nDriver: {driver}",
+    "tooltip": true,
+    "format-icons": {
+      "default": "",
+      "performance": "",
+      "balanced": "",
+      "power-saver": ""
+    },
+    "on-scroll-up": "true",
+    "on-scroll-down": "true"
+  },
+  "pulseaudio": {
+    "format": "{icon}  {volume}%",
+    "format-bluetooth": "{volume}% {icon} {format_source}",
+    "format-bluetooth-muted": " {icon} {format_source}",
+    "format-muted": " {format_source}",
+    "format-source": "{volume}% ",
+    "format-source-muted": "",
+    "format-icons": {
+      "headphone": " ",
+      "hands-free": " ",
+      "headset": " ",
+      "phone": " ",
+      "portable": " ",
+      "car": " ",
+      "default": [
+        "",
+        "",
+        ""
+      ]
+    },
+    "on-click": "pavucontrol"
+  },
+  "bluetooth": {
+    "format": " {status}",
+    "format-disabled": "",
+    "format-off": "",
+    "interval": 30,
+    "on-click": "sleep 0.1 && ~/.config/ml4w/settings/bluetooth.sh",
+    "tooltip-format-connected": "Connected devices: {num_connections} connected\n\n{device_enumerate}",
+    "tooltip-format-enumerate-connected": "{device_alias}",
+    "tooltip-format-enumerate-connected-battery": "{device_alias}\t| Battery life: {device_battery_percentage}%",
+    "format-no-controller": ""
+  }
+}
