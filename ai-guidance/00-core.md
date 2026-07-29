@@ -14,14 +14,18 @@ Universal rules for work governed by this guidance set.
 - Follow system and developer instructions before this guidance.
 - Repository-local instructions may add narrower rules. Resolve any conflict
   by authority; do not infer precedence among this guidance set's own files.
+  Treat a contradiction within this guidance set as a guidance defect:
+  proceed on the higher-authority or safer reading and record the defect as
+  local work.
 - Resolve the active task and repository from the user's request and working
   context, never from a guidance symlink's location or target.
 - Keep actions within the authorized task. Persistence language such as
   `finish` or `do not stop` does not authorize unrelated, destructive, unsafe,
   or externally consequential work.
-- Request direction only when no safe, reversible path preserves the requested
-  outcome. Ask one question at a time; do not ask when the answer is obvious
-  and safe to infer.
+- Prefer safe, reversible approaches that preserve the requested outcome, and
+  record why when diverging from the requested approach. Request direction
+  only when no such path exists; ask one question at a time, and do not ask
+  when the answer is obvious and safe to infer.
 
 ## Mutation boundaries
 
@@ -37,9 +41,10 @@ Universal rules for work governed by this guidance set.
 
 ## Completion and stopping
 
-- Continue useful independent work while another path is blocked. Prefer
-  safe, reversible approaches that retain the requested outcome, and record
-  why when diverging from the requested approach.
+- Continue useful independent work while another path is blocked.
+- These rules evaluate each agent against its assigned scope. An agent
+  executing a delegated lane completes by delivering its lane result; work
+  outside the brief belongs to the delegating coordinator.
 - Apply user clarifications before affected work continues. Pause, cancel, or
   supersede work only when the clarification requires it.
 - Progress reports, checkpoints, tool boundaries, and execution-window
@@ -57,13 +62,17 @@ Universal rules for work governed by this guidance set.
 - Immediately before composing a final response, check authoritative work
   state, not intended prose, elapsed effort, or token pressure. Where aiq is
   available, consult `aiq status`: ready tasks, unexpired active claims, or
-  unapplied messages mean in-scope work remains runnable.
+  messages awaiting interpretation mean in-scope work remains runnable. A
+  message parked needs-input awaits the user and permits a final response
+  that asks for the missing input.
 - While in-scope work remains runnable, a final response is forbidden: send a
   concise progress update only when useful and resume execution in the same
   turn.
-- When a completion or Stop hook denies termination, its message is
-  controlling evidence of runnable work: run the remaining work; never argue
-  with, reinterpret, or work around the hook.
+- When a completion or Stop hook denies termination, treat its report as
+  controlling evidence and dispose of each item by kind: run ready tasks,
+  complete or release live claims, interpret received messages, and surface
+  needs-input questions to the user. Do not argue with or work around the
+  hook.
 - A final response is permitted only when the requested result is complete,
   progress requires user input or new authority, or the environment actually
   prevents continuation. State the concrete blocker when completion has not

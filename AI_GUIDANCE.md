@@ -32,9 +32,8 @@ the absolute path. Sub-agent availability is a property of the harness tool
 list, not the shell.
 
 These documents are additive within their declared scopes. Numeric order
-controls reading, not precedence. Treat a contradiction as a guidance defect:
-proceed on the higher-authority or safer reading and record the defect as
-local work.
+controls reading, not precedence; contradiction disposition is owned by
+`00-core.md`.
 
 If an applicable document is unavailable, state the limitation and continue
 only when higher-authority instructions and the readable guidance leave a

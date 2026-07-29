@@ -61,9 +61,13 @@ a hostname.
 ## Verification
 
 Run the smallest relevant checks; `make verify` is the authoritative
-repository-wide battery (syntax, tmux, temp-home install, bootstrap budget,
-index parity, tracked-path hygiene). It does not yet cover the isolated
-profile checks — run those separately when profiles change:
+repository-wide battery: syntax and tmux checks, temp-home install,
+bootstrap budget, bootstrap-file, cross-reference, index-parity,
+tool-registry (`tmt check`), and journal-artifact checks. `tools/verify
+--only CHECK ...` runs named checks; `make verify-guidance` is the
+documentation-only subset (`35-guidance-maintenance.md`). The battery does
+not cover the isolated profile checks — run those separately when profiles
+change:
 
 ```sh
 sh -n tests/install.sh
