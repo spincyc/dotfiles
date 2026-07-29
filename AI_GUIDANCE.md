@@ -13,16 +13,15 @@ checkout does not make dotfiles the active repository.
 Read applicable documents completely and in numeric order:
 
 1. [`00-core.md`](ai-guidance/00-core.md) — always.
-2. [`05-general.md`](ai-guidance/05-general.md) — always.
-3. [`10-journal.md`](ai-guidance/10-journal.md) — always.
-4. [`15-tool-making.md`](ai-guidance/15-tool-making.md) — when the active
+2. [`10-journal.md`](ai-guidance/10-journal.md) — always.
+3. [`15-tool-making.md`](ai-guidance/15-tool-making.md) — when the active
    repository has a root `tmt.json` or tmt is available.
-5. [`20-sub-agent-scheduling.md`](ai-guidance/20-sub-agent-scheduling.md) —
+4. [`20-sub-agent-scheduling.md`](ai-guidance/20-sub-agent-scheduling.md) —
    when sub-agent tools are available.
-6. [`30-collaboration.md`](ai-guidance/30-collaboration.md) — always.
-7. [`35-guidance-maintenance.md`](ai-guidance/35-guidance-maintenance.md) —
+5. [`30-collaboration.md`](ai-guidance/30-collaboration.md) — always.
+6. [`35-guidance-maintenance.md`](ai-guidance/35-guidance-maintenance.md) —
    when editing files under the guidance root.
-8. [`40-dotfiles-repository.md`](ai-guidance/40-dotfiles-repository.md) — only
+7. [`40-dotfiles-repository.md`](ai-guidance/40-dotfiles-repository.md) — only
    when dotfiles is the active repository.
 
 ## Availability

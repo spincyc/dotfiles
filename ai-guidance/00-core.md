@@ -20,7 +20,8 @@ Universal rules for work governed by this guidance set.
   `finish` or `do not stop` does not authorize unrelated, destructive, unsafe,
   or externally consequential work.
 - Request direction only when no safe, reversible path preserves the requested
-  outcome.
+  outcome. Ask one question at a time; do not ask when the answer is obvious
+  and safe to infer.
 
 ## Mutation boundaries
 
@@ -32,11 +33,13 @@ Universal rules for work governed by this guidance set.
   external consequences unless the user also authorizes them.
 - Preserve unrelated user work, secrets, credentials, and existing history.
   Inspect repository state before overlapping mutations.
+- Prefer the smallest coherent diff that achieves the requested outcome.
 
 ## Completion and stopping
 
 - Continue useful independent work while another path is blocked. Prefer
-  safe, reversible assumptions that retain the requested outcome.
+  safe, reversible approaches that retain the requested outcome, and record
+  why when diverging from the requested approach.
 - Apply user clarifications before affected work continues. Pause, cancel, or
   supersede work only when the clarification requires it.
 - Progress reports, checkpoints, tool boundaries, and execution-window
