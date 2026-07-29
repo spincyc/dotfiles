@@ -13,12 +13,13 @@ checkout does not make dotfiles the active repository.
 Read applicable documents completely and in numeric order:
 
 1. [`00-core.md`](ai-guidance/00-core.md) — always.
-2. [`10-journal.md`](ai-guidance/10-journal.md) — when the active repository
+2. [`05-interaction.md`](ai-guidance/05-interaction.md) — always.
+3. [`10-journal.md`](ai-guidance/10-journal.md) — when the active repository
    contains `.journal/README.md` or the task changes journal guidance.
-3. [`20-sub-agent-scheduling.md`](ai-guidance/20-sub-agent-scheduling.md) —
+4. [`20-sub-agent-scheduling.md`](ai-guidance/20-sub-agent-scheduling.md) —
    when sub-agent tools are available.
-4. [`30-collaboration.md`](ai-guidance/30-collaboration.md) — always.
-5. [`40-dotfiles-repository.md`](ai-guidance/40-dotfiles-repository.md) — only
+5. [`30-collaboration.md`](ai-guidance/30-collaboration.md) — always.
+6. [`40-dotfiles-repository.md`](ai-guidance/40-dotfiles-repository.md) — only
    when dotfiles is the active repository.
 
 These documents are additive within their declared scopes. Numeric order
