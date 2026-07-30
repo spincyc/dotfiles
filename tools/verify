@@ -161,6 +161,22 @@ def check_guidance_index() -> None:
         )
 
 
+def check_core_recovery_contract() -> None:
+    text = (REPO_ROOT / "ai-guidance" / "00-core.md").read_text()
+    required = [
+        "status question during active work",
+        "not as cancellation or supersession",
+        "durable identifiers, process state, and artifacts",
+        "Never launch a duplicate",
+        "unknown outcome or unproved teardown is neither completion",
+    ]
+    missing = [phrase for phrase in required if phrase not in text]
+    if missing:
+        raise RuntimeError(
+            "00-core.md lacks recovery guarantees: " + ", ".join(missing)
+        )
+
+
 def check_tool_registry() -> None:
     if not (REPO_ROOT / "tmt.json").exists():
         return
@@ -213,6 +229,7 @@ def main() -> int:
         check_bootstrap_files,
         check_guidance_crossrefs,
         check_guidance_index,
+        check_core_recovery_contract,
         check_tool_registry,
         check_tracked_paths,
         check_profile,

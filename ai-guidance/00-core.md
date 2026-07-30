@@ -49,8 +49,16 @@ Universal rules for work governed by this guidance set.
   outside the brief belongs to the delegating coordinator.
 - Apply user clarifications before affected work continues. Pause, cancel, or
   supersede work only when the clarification requires it.
+- Treat a status question during active work as a request for a progress
+  update, not as cancellation or supersession, unless the user explicitly
+  changes or stops the task. Resume runnable work after answering.
 - Progress reports, checkpoints, tool boundaries, and execution-window
   boundaries are non-terminal while in-scope work remains runnable.
+- If a tool result or live-operation handle is truncated or lost, reconcile
+  the operation from durable identifiers, process state, and artifacts before
+  acting. Never launch a duplicate while the original may still be live; an
+  unknown outcome or unproved teardown is neither completion nor permission
+  to relaunch.
 - State blockers with concrete evidence and the exact missing input,
   authority, external change, or environmental capability, then continue
   independent work.
