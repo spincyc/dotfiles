@@ -126,8 +126,10 @@ glass theme, but its module enable/disable switches do not rewrite the active
 `config-custom`.
 
 The desktop profile preserves the established physical Hyprland key chords,
-removes the random-wallpaper action, disables Kitty's cursor trail, and keeps
-machine-specific monitor and binding selections in the named host layer.
+removes the random-wallpaper action, disables Kitty's cursor trail, pins Kitty's
+two green palette slots so a generated low-contrast green cannot hide added
+lines in `git diff`, and keeps machine-specific monitor and binding selections
+in the named host layer.
 That host layer specifically selects built-in `eDP-1`, ultrawide `DP-3` at
 `5120x1440@239.76Hz`, and the `tpacpi::kbd_backlight` device. Review it before
 using the profile on different hardware.
