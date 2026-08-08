@@ -621,6 +621,14 @@ validate_existing_target() {
   fi
 }
 
+ml4w_profile_dir_for_version() {
+  case "$1" in
+    2.9.9.5) printf '%s\n' legacy-2.9.9.5 ;;
+    2.15) printf '%s\n' 2.15 ;;
+    *) return 1 ;;
+  esac
+}
+
 profile_value() {
   awk -F '|' -v wanted_key="$1" '
     $1 == wanted_key {
@@ -647,9 +655,6 @@ gate_ml4w_profile() {
     require_command "$required_command"
   done
 
-  profile_dir="$repo_dir/profiles/ml4w/legacy-2.9.9.5"
-  profile_metadata="$profile_dir/profile.conf"
-  manifest_path="$profile_dir/manifest"
   ml4w_root="$HOME/.mydotfiles/com.ml4w.dotfiles"
   active_profile_path="$HOME/.config/ml4w-dotfiles-installer/active.json"
   live_dotinst="$ml4w_root/config.dotinst"
@@ -660,6 +665,22 @@ gate_ml4w_profile() {
   assert_owned_directory "$HOME/.config/ml4w-dotfiles-installer"
   assert_owned_directory "$HOME/.mydotfiles"
   assert_owned_directory "$ml4w_root"
+
+  # The live release selects the profile layer. ML4W moved its Hyprland
+  # configuration from hyprlang to Lua in 2.13.0, so the layers differ in both
+  # payload and expected loader and cannot share one directory.
+  validate_existing_target config.dotinst
+  assert_regular_owned_file "$live_dotinst"
+  live_profile_version=$(jq -er '.version | strings' "$live_dotinst") ||
+    die "invalid live ML4W profile version"
+  profile_version_dir=$(ml4w_profile_dir_for_version \
+    "$live_profile_version") ||
+    die "unexpected live ML4W version: $live_profile_version"
+
+  profile_dir="$repo_dir/profiles/ml4w/$profile_version_dir"
+  profile_metadata="$profile_dir/profile.conf"
+  manifest_path="$profile_dir/manifest"
+
   assert_owned_directory "$profile_dir"
   assert_owned_directory "$profile_dir/common"
   assert_owned_directory "$profile_dir/hosts"
@@ -702,9 +723,9 @@ gate_ml4w_profile() {
     die "unsupported ML4W profile schema: $expected_schema"
   [ "$expected_profile_id" = com.ml4w.dotfiles ] ||
     die "unsupported ML4W profile ID: $expected_profile_id"
-  [ "$expected_version" = 2.9.9.5 ] ||
+  [ "$expected_version" = "$live_profile_version" ] ||
     die "unsupported ML4W version: $expected_version"
-  [ "$expected_version_name" = 2.9.9.5 ] ||
+  ml4w_profile_dir_for_version "$expected_version_name" >/dev/null ||
     die "unsupported ML4W version name: $expected_version_name"
   [ "$expected_source" = \
     https://github.com/mylinuxforwork/dotfiles.git ] ||
@@ -718,12 +739,8 @@ gate_ml4w_profile() {
   [ "$active_profile_id" = "$expected_profile_id" ] ||
     die "ML4W profile is not active: $active_profile_id"
 
-  validate_existing_target config.dotinst
-  assert_regular_owned_file "$live_dotinst"
   live_profile_id=$(jq -er '.id | strings' "$live_dotinst") ||
     die "invalid live ML4W profile ID"
-  live_profile_version=$(jq -er '.version | strings' "$live_dotinst") ||
-    die "invalid live ML4W profile version"
   live_profile_source=$(jq -er '.source | strings' "$live_dotinst") ||
     die "invalid live ML4W profile source"
   live_profile_subfolder=$(jq -er '.subfolder | strings' "$live_dotinst") ||
@@ -767,7 +784,11 @@ gate_ml4w_profile() {
       die "ML4W config link has an unexpected target: $active_config_path"
   done
 
-  hypr_loader_relative=.config/hypr/hyprland.conf
+  if [ "$profile_version_dir" = legacy-2.9.9.5 ]; then
+    hypr_loader_relative=.config/hypr/hyprland.conf
+  else
+    hypr_loader_relative=.config/hypr/hyprland.lua
+  fi
   kitty_loader_relative=.config/kitty/kitty.conf
   waybar_loader_relative=.config/waybar/launch.sh
   for loader_relative in \
@@ -778,10 +799,20 @@ gate_ml4w_profile() {
     validate_existing_target "$loader_relative"
   done
 
-  grep -Eq \
-    '^[[:space:]]*source[[:space:]]*=[[:space:]]*~/\.config/hypr/conf/custom\.conf[[:space:]]*$' \
-    "$ml4w_root/$hypr_loader_relative" ||
-    die "live Hyprland schema does not load custom.conf"
+  if [ "$profile_version_dir" = legacy-2.9.9.5 ]; then
+    grep -Eq \
+      '^[[:space:]]*source[[:space:]]*=[[:space:]]*~/\.config/hypr/conf/custom\.conf[[:space:]]*$' \
+      "$ml4w_root/$hypr_loader_relative" ||
+      die "live Hyprland schema does not load custom.conf"
+  else
+    grep -Eq \
+      '/\.config/hypr/custom\.lua' \
+      "$ml4w_root/$hypr_loader_relative" &&
+      grep -Eq \
+        '^[[:space:]]*require\("custom"\)[[:space:]]*$' \
+        "$ml4w_root/$hypr_loader_relative" ||
+      die "live Hyprland schema does not load custom.lua"
+  fi
   grep -Fxq \
     'if [ -f ~/.config/waybar/themes${arrThemes[0]}/config-custom ]; then' \
     "$ml4w_root/$waybar_loader_relative" &&

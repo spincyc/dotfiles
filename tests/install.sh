@@ -61,13 +61,16 @@ write_live_metadata() {
 mkdir -p -- "$test_repo"
 cp -a -- "$repo_dir/." "$test_repo"
 
-find "$profile_dir/common" \
-  "$profile_dir/hosts/ultrawide-desktop" -type f -printf '%P\n' |
-  sort >"$test_root/payload-paths"
-awk -F '|' '!/^#/ && NF { print $3 }' "$profile_dir/manifest" |
-  sort >"$test_root/manifest-paths"
-diff -u "$test_root/payload-paths" "$test_root/manifest-paths" ||
-  fail "manifest and payload file sets differ"
+for layer_dir in "$test_repo/profiles/ml4w"/*/; do
+  layer_name=$(basename -- "$layer_dir")
+  find "$layer_dir/common" \
+    "$layer_dir/hosts/ultrawide-desktop" -type f -printf '%P\n' |
+    sort >"$test_root/payload-paths"
+  awk -F '|' '!/^#/ && NF { print $3 }' "$layer_dir/manifest" |
+    sort >"$test_root/manifest-paths"
+  diff -u "$test_root/payload-paths" "$test_root/manifest-paths" ||
+    fail "manifest and payload file sets differ: $layer_name"
+done
 
 mkdir -p -- \
   "$test_state" \
@@ -357,5 +360,89 @@ if env HOME="$test_home" XDG_STATE_HOME="$test_state" \
   >"$test_root/missing-host.out" 2>&1; then
   fail "ML4W profile accepted a missing host profile"
 fi
+
+# The live release selects the profile layer. An ML4W 2.15 tree is Lua-based,
+# so the installer must deploy profiles/ml4w/2.15 and prove the Lua loader
+# rather than the hyprlang one.
+lua_home="$test_root/home-215"
+lua_state="$test_root/state-215"
+lua_ml4w_root="$lua_home/.mydotfiles/com.ml4w.dotfiles"
+
+mkdir -p -- \
+  "$lua_state" \
+  "$lua_home/.config/ml4w-dotfiles-installer" \
+  "$lua_ml4w_root/.config/hypr/conf" \
+  "$lua_ml4w_root/.config/kitty" \
+  "$lua_ml4w_root/.config/ml4w/version" \
+  "$lua_ml4w_root/.config/swaync" \
+  "$lua_ml4w_root/.config/waybar"
+
+printf '{"active":"com.ml4w.dotfiles"}\n' \
+  >"$lua_home/.config/ml4w-dotfiles-installer/active.json"
+printf '%s\n' \
+  '{"id":"com.ml4w.dotfiles","version":"2.15","source":"https://github.com/mylinuxforwork/dotfiles.git","subfolder":"dotfiles"}' \
+  >"$lua_ml4w_root/config.dotinst"
+printf '2.15\n' >"$lua_ml4w_root/.config/ml4w/version/name"
+printf '%s\n' \
+  'local f = io.open(os.getenv("HOME") .. "/.config/hypr/custom.lua", "r")' \
+  'if f then' \
+  '    f:close()' \
+  '    require("custom")' \
+  'end' \
+  >"$lua_ml4w_root/.config/hypr/hyprland.lua"
+printf 'include $HOME/.config/kitty/custom.conf\n' \
+  >"$lua_ml4w_root/.config/kitty/kitty.conf"
+printf '%s\n' \
+  'if [ -f ~/.config/waybar/themes${arrThemes[0]}/config-custom ]; then' \
+  '    config_file="config-custom"' \
+  'fi' \
+  'if [ -f ~/.config/waybar/themes${arrThemes[1]}/style-custom.css ]; then' \
+  '    style_file="style-custom.css"' \
+  'fi' \
+  >"$lua_ml4w_root/.config/waybar/launch.sh"
+
+for config_name in hypr kitty ml4w swaync waybar; do
+  ln -s -- "$lua_ml4w_root/.config/$config_name" \
+    "$lua_home/.config/$config_name"
+done
+
+run_lua_profile() {
+  env HOME="$lua_home" XDG_STATE_HOME="$lua_state" \
+    "$test_repo/install.sh" "$@" --profile ml4w \
+    --host-profile ultrawide-desktop
+}
+
+run_lua_profile >"$test_root/lua-install.out" 2>&1 ||
+  fail "ML4W 2.15 profile install failed"
+
+[ -f "$lua_ml4w_root/.config/hypr/custom.lua" ] ||
+  fail "2.15 install did not deploy custom.lua"
+[ ! -e "$lua_ml4w_root/.config/hypr/conf/custom.conf" ] ||
+  fail "2.15 install deployed the hyprlang payload"
+assert_file_contains \
+  "$lua_ml4w_root/.config/hypr/conf/keybindings/ultrawide-desktop.lua" \
+  'hl.bind'
+assert_file_contains \
+  "$lua_ml4w_root/.config/hypr/conf/monitors/ultrawide-desktop.lua" \
+  '5120x1440@239.76'
+
+run_lua_profile --check >"$test_root/lua-check.out" 2>&1 ||
+  fail "ML4W 2.15 profile check failed"
+
+printf 'require("something-else")\n' \
+  >"$lua_ml4w_root/.config/hypr/hyprland.lua"
+if run_lua_profile --check >"$test_root/lua-loader-gate.out" 2>&1; then
+  fail "Lua loader gate accepted a tree that does not load custom.lua"
+fi
+assert_file_contains "$test_root/lua-loader-gate.out" \
+  "live Hyprland schema does not load custom.lua"
+
+printf '{"id":"com.ml4w.dotfiles","version":"2.14.0","source":"https://github.com/mylinuxforwork/dotfiles.git","subfolder":"dotfiles"}\n' \
+  >"$lua_ml4w_root/config.dotinst"
+if run_lua_profile --check >"$test_root/lua-version-gate.out" 2>&1; then
+  fail "layer selection accepted an unsupported ML4W version"
+fi
+assert_file_contains "$test_root/lua-version-gate.out" \
+  "unexpected live ML4W version: 2.14.0"
 
 printf 'ok - installer profile, drift, backup, and safety checks passed\n'
