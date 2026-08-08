@@ -1,0 +1,33 @@
+{
+  "layer": "top",
+  "margin-top": 1,
+  "margin-bottom": 4,
+  "margin-left": 1,
+  "margin-right": 1,
+  "spacing": 0,
+  "include": [
+    "~/.config/waybar/modules-custom.json"
+  ],
+  "modules-left": [
+    "custom/appmenu",
+    "custom/empty"
+  ],
+  "modules-center": [
+    "hyprland/workspaces",
+    "custom/empty"
+  ],
+  "modules-right": [
+    "custom/updates",
+    "pulseaudio",
+    "bluetooth",
+    "network",
+    "battery",
+    "group/hardware",
+    "group/tools",
+    "tray",
+    "custom/notification",
+    "custom/exit",
+    "custom/ml4w-welcome",
+    "clock"
+  ]
+}

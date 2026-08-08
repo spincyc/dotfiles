@@ -1,0 +1,77 @@
+/* Load the selected ML4W palette and glass theme, then own its geometry. */
+@import 'style.css';
+
+.modules-left,
+.modules-center,
+.modules-right {
+    border: 1px solid transparent;
+    border-radius: 0;
+    margin: 1px;
+}
+
+label.module {
+    border-radius: 0;
+    margin-left: 8px;
+    margin-right: 8px;
+}
+
+#workspaces {
+    padding: 1px;
+}
+
+#workspaces button,
+#workspaces button.active,
+#workspaces button:hover {
+    border-radius: 0;
+}
+
+#workspaces button,
+#workspaces button.active {
+    border: 1px solid transparent;
+}
+
+#workspaces button {
+    margin: 0 1px;
+    padding: 0 1px;
+}
+
+tooltip {
+    border: 1px solid transparent;
+    border-radius: 0;
+    margin: 1px;
+}
+
+#taskbar {
+    padding: 1px 0;
+}
+
+#taskbar button {
+    border-radius: 0;
+    padding: 0 1px;
+}
+
+#custom-ml4w-welcome {
+    margin-bottom: 1px;
+    margin-top: 1px;
+}
+
+#custom-appmenu {
+    padding-left: 1px;
+    padding-right: 1px;
+}
+
+#custom-updates.yellow,
+#custom-updates.red {
+    border-radius: 0;
+    margin: 1px 0 1px 1px;
+    padding: 0 1px;
+}
+
+#clock {
+    margin-left: 1px;
+    margin-right: 1px;
+}
+
+#tray {
+    padding: 0 1px;
+}

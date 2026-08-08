@@ -1,0 +1,15 @@
+common|0644|.config/hypr/custom.lua
+common|0644|.config/kitty/custom.conf
+common|0644|.config/ml4w/settings/dock-theme
+common|0644|.config/ml4w/settings/launcher
+common|0644|.config/ml4w/settings/rofi-border.rasi
+common|0644|.config/ml4w/settings/walker-theme
+common|0644|.config/ml4w/settings/waybar-theme.sh
+common|0644|.config/swaync/style.css
+common|0644|.config/waybar/modules-custom.json
+common|0644|.config/waybar/themes/ml4w-glass-center/config-custom
+common|0644|.config/waybar/themes/ml4w-glass-center/default/style-custom.css
+host:ultrawide-desktop|0644|.config/hypr/conf/keybindings/ultrawide-desktop.lua
+host:ultrawide-desktop|0644|.config/hypr/conf/keybinding.lua
+host:ultrawide-desktop|0644|.config/hypr/conf/monitors/ultrawide-desktop.lua
+host:ultrawide-desktop|0644|.config/hypr/conf/monitor.lua
