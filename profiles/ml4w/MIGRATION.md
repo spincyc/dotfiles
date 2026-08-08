@@ -106,20 +106,80 @@ deploys nothing, which is the correct outcome rather than a partial overlay.
    `legacy-2.9.9.5/` and collapse the installer version gate back to a single
    pinned version.
 
-## Open questions
+## Resolved constructs (stage 2, 2026-08-08)
 
-Constructs in the legacy keybinding payload with no mechanically obvious Lua
-equivalent. Each is resolved in stage 2 and the outcome recorded here.
+Every construct in the legacy keybinding payload now has a Lua equivalent.
+Unless noted, the evidence is ML4W 2.15's own
+`.config/hypr/conf/keybindings/default.lua`.
 
-- `$mainMod = SHIFT CTRL`: how a multi-modifier main modifier is spelled.
-- `monitor=DP-3,5120x1440@239.76Hz,auto,1`: whether `hl.monitor` accepts a
-  refresh rate inside `mode`. Upstream examples omit one.
-- `workspace, e+1` and `e-1` bound to `mouse_down` and `mouse_up`.
-- `workspace, empty`.
-- `bind = , code:238` and `code:237`: raw keycodes for the keyboard backlight.
-- `$SCRIPTS/wlogout.sh` and `$SCRIPTS/cliphist.sh`: 2.15 renamed several ML4W
-  scripts, so these exec paths need re-verification.
-- The Quickshell IPC invocation behind `$ML4WSETTINGS`.
-- `custom.conf` sets `input` scalars including `sensitivity` and
-  `mouse_refocus`. In 2.15 input configuration lives in a top-level
-  `input.lua`, so the override target may have moved.
+| Legacy | Lua |
+| --- | --- |
+| `$mainMod = SHIFT CTRL` | `local mainMod = "SHIFT + CTRL"`, composed with `..` |
+| `monitor=...,5120x1440@239.76Hz,...` | `mode = "5120x1440@239.76"`; the refresh rate goes inside `mode` with no `Hz` suffix, as in ML4W's `2560x1440@120.lua` |
+| `bind = $mainMod, mouse_down, workspace, e+1` | `hl.bind(mainMod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }))` |
+| `bindm = ALT, mouse:272, movewindow` | `hl.bind("ALT + mouse:272", hl.dsp.window.drag(), { mouse = true })` |
+| `bind = , XF86AudioMute, exec, ...` | `hl.bind("XF86AudioMute", hl.dsp.exec_cmd(...), { locked = true })` |
+| `bind = , code:238, exec, ...` | `hl.bind("code:238", hl.dsp.exec_cmd(...))`; the `code:` prefix survives |
+| `killactive` | `hl.dsp.window.close()` |
+| `togglefloating` | `hl.dsp.window.float({ action = "toggle" })` |
+| `fullscreen` | `hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle" })` |
+| `movefocus, l` | `hl.dsp.focus({ direction = "left" })` |
+| `resizeactive, 100 0` | `hl.dsp.window.resize({ x = 100, y = 0, relative = true })` |
+| `workspace, 3` | `hl.dsp.focus({ workspace = 3 })` |
+
+ML4W 2.15 script renames that the host keybinding payload has to follow:
+
+| Legacy | 2.15 |
+| --- | --- |
+| `~/.config/ml4w/scripts/wlogout.sh` | `~/.config/ml4w/scripts/ml4w-power` |
+| `~/.config/ml4w/scripts/cliphist.sh` | `~/.config/ml4w/scripts/ml4w-cliphist` |
+| `~/.config/ml4w/settings/filemanager.sh` | `~/.config/ml4w/settings/filemanager` |
+
+`~/.config/hypr/scripts/{moveTo,screenshot,loadconfig,toggle-animations}.sh`,
+`~/.config/waybar/launch.sh`, `~/.config/ml4w/settings/{terminal,browser,calculator}.sh`,
+`waypaper`, `rofi`, and `hyprlock` are unchanged in 2.15.
+
+`$ML4WSETTINGS` also stays as it is. The ML4W Settings app is a separate
+upstream project (`mylinuxforwork/dotfiles-settings`) installed under
+`~/.local/share/ml4w-dotfiles-settings/`, so its Quickshell IPC invocation does
+not move with a dotfiles release.
+
+The `input` overrides stay in `custom.lua`. 2.15 does read input configuration
+from a top-level `input.lua`, but `hyprland.lua` runs `require("custom")` after
+every `conf.*` and after `require("input")`, so a later `hl.config({ input = ... })`
+still wins.
+
+### Inference, not yet proven
+
+`bind = $mainMod, N, workspace, empty` is translated as
+`hl.dsp.focus({ workspace = "empty" })`. No upstream Lua example uses `empty`,
+and the third-party Lua API reference does not list it — but that reference
+also omits `e+1`, which ML4W demonstrably uses, so it is incomplete rather than
+authoritative. The reading is that the Lua layer passes the workspace selector
+string through to the same parser hyprlang used. Prove it at stage 3 with:
+
+```sh
+hyprctl dispatch workspace empty
+```
+
+## Confirm at stage 3
+
+Two values in `profiles/ml4w/2.15/profile.conf` are pinned from upstream
+metadata rather than from an observed installation:
+
+- `version` is `2.15`, taken from upstream `hyprland-dotfiles.dotinst`, which
+  is the file ML4W copies to `~/.mydotfiles/com.ml4w.dotfiles/config.dotinst`.
+  This one is well evidenced.
+- `version_name` is also pinned to `2.15`, which is an inference. The live
+  `.config/ml4w/version/name` marker is written by the ML4W installer and is
+  not shipped in the repository, so its 2.15 value cannot be read ahead of the
+  upgrade. The legacy installation writes the `config.dotinst` version into
+  that marker, hence the inference.
+
+Both fail closed. A wrong `version_name` stops the installer with
+`unexpected live ML4W version name` and deploys nothing.
+
+Upstream's own `.config/ml4w/version.json` reports `2.12.3` at tag 2.15, so
+that marker remains unreliable as a version source — the same mismatch
+`legacy-2.9.9.5/PROVENANCE.md` records for the legacy capture. The gate
+deliberately does not read it.
