@@ -5,7 +5,7 @@ Compared the tracked repository with `/home/ksh`, `~/.config`, and the active ML
 ## Current coverage
 
 - Core portable files: `.zshrc` and `.tmux.conf` are tracked and installed as symlinks.
-- ML4W: the legacy `2.9.9.5` profile tracks customized Hyprland, Kitty, SwayNC, and Waybar files, including the ultrawide host monitor/binding overlay.
+- ML4W: the legacy `2.9.9.5` and the Lua `2.15` profiles track customized Hyprland, Kitty, SwayNC, and Waybar files, including the ultrawide host monitor/binding overlay. The installer selects the layer from the live release; see `profiles/ml4w/MIGRATION.md`.
 - Vendor/generated state is excluded: caches, histories, completion dumps, theme/color outputs, wallpaper assets, updater state, and the full ML4W checkout.
 - Secrets are excluded: SSH/GPG material, GitHub `hosts.yml`, WireGuard profiles, certificates, browser state, and cookies.
 
@@ -17,7 +17,7 @@ Compared the tracked repository with `/home/ksh`, `~/.config`, and the active ML
 
 ## Arch Linux boundary
 
-Pacman owns packaged programs and system files under `/usr` and `/etc`; it does not own this user's home configuration. This host currently has `hyprland 0.56.1-2`, `waybar 0.15.0-2`, `kitty 0.48.1-1`, and `neovim 0.12.4-1`; their `~/.config` files remain user-managed. Keep a separate reviewed package-name manifest (`pacman -Qqe`, with foreign/AUR packages recorded separately) rather than mixing package installation with dotfile deployment.
+Pacman owns packaged programs and system files under `/usr` and `/etc`; it does not own this user's home configuration. This host currently has `hyprland 0.56.2-1`, `waybar 0.15.0-2`, `kitty 0.48.1-1`, and `neovim 0.12.4-1`; their `~/.config` files remain user-managed. Hyprland 0.57 removes the `.conf` configuration format, so the packaged compositor and the tracked profile layer have to move together. Keep a separate reviewed package-name manifest (`pacman -Qqe`, with foreign/AUR packages recorded separately) rather than mixing package installation with dotfile deployment.
 
 ## Resolution
 

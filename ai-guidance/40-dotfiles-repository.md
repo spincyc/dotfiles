@@ -74,6 +74,7 @@ sh -n tests/install.sh
 ./tests/install.sh
 jq -e . profiles/ml4w/*/common/.config/waybar/*.json \
   profiles/ml4w/*/common/.config/waybar/themes/*/config-custom
+luac5.4 -p $(find profiles -name '*.lua')
 ```
 
 Use only a temporary home and remove it afterward. Report unavailable checks

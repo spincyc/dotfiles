@@ -57,14 +57,30 @@ effect as soon as they are pulled. Start a new shell with `exec zsh`; reload
 tmux with `prefix + r`. Copied desktop payloads require another profile install
 after a pull.
 
-## ML4W legacy desktop profile
+## ML4W desktop profile
 
-The profile in
-`profiles/ml4w/legacy-2.9.9.5/` reconciles the reviewed preferences from the
-legacy rolling ML4W installation without tracking its generated files, restored
-duplicates, caches, wallpapers, or unmodified vendor tree. It requires:
+The profiles under `profiles/ml4w/` reconcile the reviewed preferences from an
+ML4W installation without tracking its generated files, restored duplicates,
+caches, wallpapers, or unmodified vendor tree. Two layers are maintained:
 
-- an active ML4W profile with ID `com.ml4w.dotfiles` and version `2.9.9.5`;
+| Layer | ML4W release | Hyprland configuration |
+| --- | --- | --- |
+| `legacy-2.9.9.5/` | `2.9.9.5` | hyprlang `.conf` |
+| `2.15/` | `2.15` | Lua |
+
+You do not choose between them. The installer reads the live
+`config.dotinst` version and selects the matching layer, because ML4W moved its
+Hyprland configuration from hyprlang to Lua in 2.13.0 and the two layers deploy
+different files through different loaders. An ML4W release that has no layer
+stops the installer with `unexpected live ML4W version`.
+
+Hyprland removes the `.conf` format in 0.57, which is why the Lua layer exists
+ahead of the upgrade. `profiles/ml4w/MIGRATION.md` records the evidence, the
+hyprlang-to-Lua mapping, and the remaining steps.
+
+The profile requires:
+
+- an active ML4W profile with ID `com.ml4w.dotfiles` and a supported version;
 - the ML4W `config-custom` and `style-custom.css` extension points;
 - `jq` and the standard utilities used by `install.sh`; and
 - the semantic host profile `ultrawide-desktop`.
@@ -134,12 +150,14 @@ That host layer specifically selects built-in `eDP-1`, ultrawide `DP-3` at
 `5120x1440@239.76Hz`, and the `tpacpi::kbd_backlight` device. Review it before
 using the profile on different hardware.
 
-The exact gate follows the active installer's `2.9.9.5` identity and
-`.config/ml4w/version/name`, even though a later mixed rolling file reported a
-`2.12.0` marker. The profile does not claim that the source tree was a pristine
-release. Upstream identity and the mixed legacy baseline are documented in
-`profiles/ml4w/legacy-2.9.9.5/PROVENANCE.md`; the derived payload's GPL boundary
-is documented in `profiles/ml4w/legacy-2.9.9.5/LICENSES/README.md`.
+The exact gate follows the active installer's `config.dotinst` version and
+`.config/ml4w/version/name`, never `.config/ml4w/version.json`, which upstream
+leaves stale: the legacy tree reported `2.12.0` there and upstream tag `2.15`
+still reports `2.12.3`. Neither profile claims that its source tree was a
+pristine release. Upstream identity, the mixed legacy baseline, and the
+derivation of the Lua layer are documented in each layer's `PROVENANCE.md`; the
+derived payloads' GPL boundary is documented in each layer's
+`LICENSES/README.md`.
 
 Run the isolated installer regression suite with:
 
