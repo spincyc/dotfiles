@@ -136,12 +136,20 @@ for core_target in \
   .codex/ai-guidance \
   .claude/CLAUDE.md \
   .claude/ai-guidance \
-  .claude/settings.json \
   .gemini/GEMINI.md \
   .gemini/ai-guidance
 do
   [ -L "$test_home/$core_target" ] ||
     fail "portable core link is missing: $core_target"
+done
+
+# Seeds are copied, never linked: Claude Code and the tool integrations own the
+# live file once it exists.
+for seed_target in .claude/settings.json; do
+  [ ! -L "$test_home/$seed_target" ] ||
+    fail "seed was linked instead of copied: $seed_target"
+  [ -f "$test_home/$seed_target" ] ||
+    fail "seed was not copied: $seed_target"
 done
 
 core_backup=$(find "$test_state/dotfiles/backups" -type f \
