@@ -77,6 +77,13 @@ jq -e . profiles/ml4w/*/common/.config/waybar/*.json \
 luac5.4 -p $(find profiles -name '*.lua')
 ```
 
+`make verify` needs `tmux`: without it both `sanity-check` and `check_profile`
+fail outright, taking the whole battery with them. When it is unavailable, run
+every other check by name and reproduce the rest of `check_profile` directly —
+`git diff --check HEAD`, `sh -n install.sh`, `zsh -n` on `.zshenv` and
+`.zshrc`, and a temp-home `./install.sh` followed by `./install.sh --check` —
+then report the tmux check as skipped rather than claiming the battery passed.
+
 Use only a temporary home and remove it afterward. Report unavailable checks
 instead of installing tools or claiming success. The isolated profile test must
 also enforce exact manifest-to-payload equality. Run a live desktop `--check`

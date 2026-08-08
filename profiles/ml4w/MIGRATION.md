@@ -93,18 +93,64 @@ deploys nothing, which is the correct outcome rather than a partial overlay.
 
 ## Stages
 
-1. **Repository payload.** Add `profiles/ml4w/2.15/` beside the legacy layer
-   and translate the five Hyprland files. No change to `~/.config`.
-2. **Semantic unknowns.** Resolve the constructs listed below before the
-   payload is trusted.
-3. **Live upgrade.** Requires a session restart, so it is the user's call.
-   Upgrade ML4W to 2.15 with its own installer, re-verify the ten non-Hyprland
-   manifest destinations against what 2.15 actually ships, correct drift, then
-   deploy the profile. Rollback is the ML4W backup under `~/.mydotfiles/backups`
-   plus a checkout of the legacy layer.
-4. **After 0.57 ships.** Confirm no deprecation notice remains, then delete
-   `legacy-2.9.9.5/` and collapse the installer version gate back to a single
-   pinned version.
+| Stage | Outcome | State |
+| --- | --- | --- |
+| 1 | `profiles/ml4w/2.15/` exists beside the legacy layer, five Hyprland files translated, installer selects a layer from the live release | Done 2026-08-08 |
+| 2 | Every hyprlang construct has a Lua equivalent, inferences flagged | Done 2026-08-08 |
+| 3 | Live ML4W upgraded to 2.15 and the Lua profile deployed | Pending. Needs a session restart |
+| 4 | Legacy layer and this document deleted after 0.57 ships | Pending |
+
+Stage 1 also found that the migration is narrower than first scoped. Every ML4W
+extension point behind the ten non-Hyprland manifest entries still exists at tag
+2.15, so those files carried across unchanged and only the five Hyprland files
+were translated. Waybar survives in 2.15; Quickshell is additive rather than a
+replacement.
+
+### Stage 3 runbook
+
+Each step is safe to stop after. Rollback at any point is the ML4W backup under
+`~/.mydotfiles/backups` plus the legacy layer, which stays functional and is
+re-selected automatically the moment `config.dotinst` reads `2.9.9.5` again.
+
+| # | Step | Command | Expected |
+| --- | --- | --- | --- |
+| 1 | Settle the one unproven dispatcher | `hyprctl dispatch workspace empty` | Works on 0.56.2 today. Success confirms `hl.dsp.focus({ workspace = "empty" })`. Failure means reworking that single bind and nothing else |
+| 2 | Upgrade ML4W | `ml4w-dotfiles-installer` | Backs up to `~/.mydotfiles/backups`, rewrites `~/.config/hypr` to Lua, drops `hyprland.conf`. Tracked overrides are replaced by ML4W defaults; step 5 restores them |
+| 3 | Confirm the two pinned values | `jq .version ~/.mydotfiles/com.ml4w.dotfiles/config.dotinst` and `cat ~/.mydotfiles/com.ml4w.dotfiles/.config/ml4w/version/name` | Both `2.15`. If either differs, correct `2.15/profile.conf`. See "Confirm at stage 3" below |
+| 4 | Dry run | `./install.sh --check --profile ml4w --host-profile ultrawide-desktop` | Reports the fifteen files as missing or drifted. That is the correct pre-deploy state. A `die` means a gate caught something real |
+| 5 | Deploy | `./install.sh --profile ml4w --host-profile ultrawide-desktop` | Writes the Lua payload; a following `--check` exits 0 |
+| 6 | Reload and exercise | `~/.config/hypr/scripts/loadconfig.sh` | Work through the table below |
+| 7 | Clean up ML4W's orphans | `~/.config/ml4w/scripts/ml4w-remove-conf` | Deletes the `.conf` files 2.13.0 replaced. Optional and cosmetic |
+
+### Post-deploy checks
+
+Syntax is proven; runtime behaviour is not. Ranked by how likely each is to be
+wrong.
+
+| Risk | Binding or setting | Notes |
+| --- | --- | --- |
+| Highest | `SHIFT+CTRL+N`, empty workspace | Settled at runbook step 1 |
+| High | `SHIFT+CTRL` + scroll, workspace `e+1` and `e-1` | Selector-string passthrough, same fix shape as `empty` |
+| High | `SHIFT+CTRL+ALT+I/J/K/L`, resize | `relative = true` semantics unconfirmed |
+| Medium | Keyboard backlight `code:238` and `code:237` | The `code:` prefix is confirmed; the `tpacpi::kbd_backlight` device is the likelier failure |
+| Medium | `SHIFT+CTRL+Q` and `SHIFT+CTRL+V` | Renamed to `ml4w-power` and `ml4w-cliphist`; confirm both exist |
+| Medium | `SHIFT+CTRL+E`, file manager | Lost its `.sh` suffix in 2.15 |
+| Low | `DP-3` at `5120x1440@239.76` | Evidenced by ML4W's own `2560x1440@120.lua` |
+| Low | XF86 media and brightness keys | Direct upstream pattern match |
+
+### Stage 4
+
+| Trigger | Step | Expected |
+| --- | --- | --- |
+| 0.57 reaches Arch | `pacman -Syu`, then watch startup | No deprecation notice means the migration held |
+| Confirmed clean | Delete `profiles/ml4w/legacy-2.9.9.5/` | Payload, `PROVENANCE.md` and `LICENSES/` go with it |
+| Same commit | Reduce `ml4w_profile_dir_for_version` to one entry and drop the `legacy-2.9.9.5` branches in the loader gate | `install.sh` ends up simpler than before the migration |
+| Same commit | Delete this document | It is a migration record, not permanent documentation |
+
+If ML4W ships 2.16 or later before 0.57 arrives, re-pin instead: add the version
+to the table in `install.sh`, copy `profiles/ml4w/2.15/` to the new version, and
+re-verify the extension points. That is much cheaper than this round, because
+the hyprlang translation is a one-time cost.
 
 ## Resolved constructs (stage 2, 2026-08-08)
 
