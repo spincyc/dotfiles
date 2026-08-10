@@ -20,10 +20,10 @@
     }
   },
   "custom/ml4w-welcome": {
-    "on-click": "qs ipc call sidebar toggle",
+    "on-click": "qs -p ~/.local/share/ml4w-dotfiles-settings/quickshell ipc call settings toggle",
     "on-click-right": "qs ipc call welcome toggle",
     "format": "\uf2c0",
-    "tooltip-format": "Left: Open ML4W Sidebar\nRight: Open ML4W Welcome App"
+    "tooltip-format": "Left: ML4W Settings\nRight: ML4W Welcome"
   },
   "custom/empty": {
     "format": ""
