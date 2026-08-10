@@ -22,20 +22,20 @@
   "custom/ml4w-welcome": {
     "on-click": "qs ipc call sidebar toggle",
     "on-click-right": "qs ipc call welcome toggle",
-    "format": " ",
+    "format": "\uf2c0",
     "tooltip-format": "Left: Open ML4W Sidebar\nRight: Open ML4W Welcome App"
   },
   "custom/empty": {
     "format": ""
   },
   "custom/tools": {
-    "format": "",
+    "format": "\uf5fd",
     "tooltip-format": "Tools",
     "on-scroll-up": "true",
     "on-scroll-down": "true"
   },
   "custom/cliphist": {
-    "format": "",
+    "format": "\uf0ea",
     "on-click": "sleep 0.1 && ~/.config/ml4w/scripts/ml4w-cliphist",
     "on-click-right": "sleep 0.1 && ~/.config/ml4w/scripts/ml4w-cliphist d",
     "on-click-middle": "sleep 0.1 && ~/.config/ml4w/scripts/ml4w-cliphist w",
@@ -44,7 +44,7 @@
     "on-scroll-down": "true"
   },
   "custom/updates": {
-    "format": " {}",
+    "format": "\uf1b2 {}",
     "escape": true,
     "return-type": "json",
     "exec": "~/.config/ml4w/scripts/ml4w-check-system-updates",
@@ -55,13 +55,13 @@
     "on-click-right": "~/.config/ml4w/settings/software.sh"
   },
   "custom/appmenu": {
-    "format": "",
+    "format": "\uf009",
     "on-click": "~/.config/hypr/scripts/launcher.sh",
     "on-click-right": "~/.config/hypr/scripts/keybindings.sh",
     "tooltip-format": "Left: Open the application launcher\nRight: Show all keybindings"
   },
   "custom/exit": {
-    "format": "",
+    "format": "\uf011",
     "on-click": "qs ipc call power toggle",
     "tooltip-format": "Open Power Menu"
   },
@@ -75,7 +75,7 @@
       "dnd-none": "notifications_paused",
       "inhibited-notification": "notification_important",
       "inhibited-none": "notification_important",
-      "dnd-inhibited-notification": "notification_off",
+      "dnd-inhibited-notification": "do_not_disturb_on",
       "dnd-inhibited-none": "notifications_off"
     },
     "return-type": "json",
@@ -86,14 +86,14 @@
     "escape": true
   },
   "custom/hyprshade": {
-    "format": "",
+    "format": "\ue4dc",
     "tooltip-format": "Toggle Screen Shader",
     "on-click": "sleep 0.5; ~/.config/ml4w/scripts/ml4w-toggle-hyprsunset",
     "on-scroll-up": "true",
     "on-scroll-down": "true"
   },
   "custom/hypridle": {
-    "format": "",
+    "format": "\uf023",
     "return-type": "json",
     "escape": true,
     "exec-on-event": true,
@@ -115,7 +115,7 @@
     "tooltip-format": "{:%A\n%Y-%m-%d}"
   },
   "custom/system": {
-    "format": "",
+    "format": "\ue473",
     "tooltip": false,
     "on-scroll-up": "true",
     "on-scroll-down": "true"
@@ -177,13 +177,13 @@
     ]
   },
   "network": {
-    "format": "",
-    "format-wifi": "",
-    "format-ethernet": "",
-    "format-disconnected": "",
-    "tooltip-format": " {ifname} via {gwaddr}",
-    "tooltip-format-wifi": "  {ifname} @ {essid}\nIP: {ipaddr}\nStrength: {signalStrength}%\nFreq: {frequency}MHz\nUp: {bandwidthUpBits} Down: {bandwidthDownBits}",
-    "tooltip-format-ethernet": " {ifname}\nIP: {ipaddr}\nUp: {bandwidthUpBits} Down: {bandwidthDownBits}",
+    "format": "\uf6ff",
+    "format-wifi": "\uf1eb {signalStrength}",
+    "format-ethernet": "\uf796",
+    "format-disconnected": "\uf127",
+    "tooltip-format": "\uf796 {ifname} via {gwaddr}",
+    "tooltip-format-wifi": "\uf1eb  {ifname} @ {essid}\nIP: {ipaddr}\nStrength: {signalStrength}%\nFreq: {frequency}MHz\nUp: {bandwidthUpBits} Down: {bandwidthDownBits}",
+    "tooltip-format-ethernet": "\uf796 {ifname}\nIP: {ipaddr}\nUp: {bandwidthUpBits} Down: {bandwidthDownBits}",
     "tooltip-format-disconnected": "Disconnected",
     "max-length": 50,
     "on-click": "~/.config/ml4w/settings/networkmanager.sh",
@@ -196,26 +196,27 @@
       "critical": 15
     },
     "format": "{icon} {capacity}",
-    "format-charging": " {capacity}",
-    "format-plugged": " {capacity}",
-    "format-alt": "{icon}  {time}",
+    "format-charging": "\uf5e7 {capacity}",
+    "format-plugged": "\uf1e6 {capacity}",
     "format-icons": [
-      " ",
-      " ",
-      " ",
-      " ",
-      " "
-    ]
+      "\uf244",
+      "\uf243",
+      "\uf242",
+      "\uf241",
+      "\uf240"
+    ],
+    "tooltip": true,
+    "tooltip-format": "{capacity}% - {time}"
   },
   "power-profiles-daemon": {
     "format": "{icon}",
     "tooltip-format": "Power profile: {profile}\nDriver: {driver}",
     "tooltip": true,
     "format-icons": {
-      "default": "",
-      "performance": "",
-      "balanced": "",
-      "power-saver": ""
+      "default": "\uf185",
+      "performance": "\uf0e7",
+      "balanced": "\uf863",
+      "power-saver": "\uf06c"
     },
     "on-scroll-up": "true",
     "on-scroll-down": "true"
@@ -223,21 +224,21 @@
   "pulseaudio": {
     "format": "{icon}",
     "format-bluetooth": "{icon}",
-    "format-bluetooth-muted": " {icon} {format_source}",
-    "format-muted": "",
-    "format-source": "{volume}% ",
-    "format-source-muted": "",
+    "format-bluetooth-muted": "\uf6a9",
+    "format-muted": "\uf6a9",
+    "format-source": "{volume}% \uf130",
+    "format-source-muted": "\uf131",
     "format-icons": {
-      "headphone": " ",
-      "hands-free": " ",
-      "headset": " ",
-      "phone": " ",
-      "portable": " ",
-      "car": " ",
+      "headphone": "\uf025",
+      "hands-free": "\uf590",
+      "headset": "\uf590",
+      "phone": "\uf095",
+      "portable": "\uf095",
+      "car": "\uf1b9",
       "default": [
-        "",
-        "",
-        ""
+        "\uf026",
+        "\uf027",
+        "\uf028"
       ]
     },
     "on-click": "pavucontrol",
@@ -245,22 +246,23 @@
     "tooltip-format": "Volume: {volume}%\n{desc}"
   },
   "bluetooth": {
-    "format": "",
-    "format-disabled": "",
-    "format-off": "",
-    "interval": 30,
+    "format": "\uf293",
+    "format-disabled": "\uf5b0",
+    "format-off": "\uf5b0",
     "on-click": "sleep 0.1 && ~/.config/ml4w/settings/bluetooth.sh",
     "tooltip-format-connected": "Connected devices: {num_connections} connected\n\n{device_enumerate}",
     "tooltip-format-enumerate-connected": "{device_alias}",
     "tooltip-format-enumerate-connected-battery": "{device_alias}\t| Battery life: {device_battery_percentage}%",
-    "format-no-controller": ""
+    "format-no-controller": "\uf5b0",
+    "format-on": "\uf293",
+    "format-connected": "\uf293 {num_connections}"
   },
   "backlight": {
     "format": "{icon} {percent}",
     "format-icons": [
-      "",
-      "",
-      ""
+      "\uf5df",
+      "\uf5e0",
+      "\uf5e1"
     ],
     "tooltip": true,
     "tooltip-format": "Brightness: {percent}%",
@@ -274,21 +276,21 @@
     "critical-threshold": 90,
     "format": "{icon} {temperatureC}",
     "format-icons": [
-      "",
-      "",
-      ""
+      "\uf2cb",
+      "\uf2c9",
+      "\uf2c7"
     ],
     "tooltip": true,
-    "tooltip-format": "CPU package: {temperatureC}°C",
+    "tooltip-format": "CPU package: {temperatureC}\u00b0C",
     "on-click": "~/.config/ml4w/settings/system-monitor.sh"
   },
   "mpris": {
     "format": "{status_icon}",
     "format-paused": "{status_icon}",
     "status-icons": {
-      "playing": "",
-      "paused": "",
-      "stopped": ""
+      "playing": "\uf04b",
+      "paused": "\uf04c",
+      "stopped": "\uf04d"
     },
     "tooltip": true,
     "tooltip-format": "{title}\n{artist}",
