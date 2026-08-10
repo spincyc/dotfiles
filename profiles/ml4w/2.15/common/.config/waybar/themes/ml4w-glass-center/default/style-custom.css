@@ -110,7 +110,39 @@ label.module {
     padding-right: 14px;
 }
 
-#workspaces button {
+/* Two-column rows. A group in a left-positioned bar stacks horizontally, so
+   every row is [icon][value]. Pinning the icon child to one width puts every
+   glyph in the same column and starts every value at the same x. Icon-only
+   modules get a blank spacer in the value column: GTK centres a label in its
+   allocation and CSS cannot left-align it, so without something occupying the
+   right-hand column those icons drift right of the rows. */
+#custom-exit,
+#custom-appmenu,
+#custom-ml4w-welcome,
+#custom-notification,
+#custom-updates,
+#mpris,
+#privacy,
+#tray,
+#pulseaudio,
+#network,
+#bluetooth,
+#battery,
+#backlight,
+#temperature {
+    min-width: 20px;
     padding-left: 2px;
-    padding-right: 14px;
+    padding-right: 0;
+}
+
+#custom-empty,
+#battery.v,
+#backlight.v,
+#temperature.v,
+#custom-updates.v,
+#network.v,
+#bluetooth.v {
+    min-width: 26px;
+    padding-left: 4px;
+    padding-right: 0;
 }
