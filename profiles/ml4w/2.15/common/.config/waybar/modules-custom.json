@@ -6,11 +6,6 @@
     "active-only": false,
     "all-outputs": true,
     "format": "{}",
-    "format-icons": {
-      "urgent": "",
-      "active": "",
-      "default": ""
-    },
     "persistent-workspaces": {
       "*": [
         1,
@@ -22,8 +17,7 @@
         7,
         8
       ]
-    },
-    "orientation": "vertical"
+    }
   },
   "custom/ml4w-welcome": {
     "on-click": "qs ipc call sidebar toggle",
@@ -61,7 +55,7 @@
     "on-click-right": "~/.config/ml4w/settings/software.sh"
   },
   "custom/appmenu": {
-    "format": "",
+    "format": "",
     "on-click": "~/.config/hypr/scripts/launcher.sh",
     "on-click-right": "~/.config/hypr/scripts/keybindings.sh",
     "tooltip-format": "Left: Open the application launcher\nRight: Show all keybindings"
