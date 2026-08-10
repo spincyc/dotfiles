@@ -68,11 +68,14 @@ caches, wallpapers, or unmodified vendor tree. Two layers are maintained:
 | `legacy-2.9.9.5/` | `2.9.9.5` | hyprlang `.conf` |
 | `2.15/` | `2.15` | Lua |
 
-You do not choose between them. The installer reads the live
-`config.dotinst` version and selects the matching layer, because ML4W moved its
-Hyprland configuration from hyprlang to Lua in 2.13.0 and the two layers deploy
-different files through different loaders. An ML4W release that has no layer
-stops the installer with `unexpected live ML4W version`.
+You do not choose between them. The installer selects the layer from the
+Hyprland configuration format actually deployed: `hyprland.lua` picks the Lua
+layer, `hyprland.conf` the hyprlang one, and Lua wins when both are present
+because an upgrade leaves the old file behind. It deliberately does not read a
+version marker - ML4W writes `config.dotinst` and `.config/ml4w/version/name`
+once at first install and never rewrites them, and upstream ships
+`.config/ml4w/version.json` stale, so no marker on disk identifies the
+installed release.
 
 Hyprland removes the `.conf` format in 0.57, which is why the Lua layer exists
 ahead of the upgrade. `profiles/ml4w/MIGRATION.md` records the evidence, the
@@ -126,7 +129,7 @@ already provide the referenced commands and schemas, including Quickshell,
 Rofi, Waypaper, PulseAudio tools, Brightnessctl, Playerctl, Hyprlock, and the
 configured applications.
 
-Replacement is atomic per desktop file, but the 15-file manifest is not one
+Replacement is atomic per desktop file, but the 16-file manifest is not one
 all-or-nothing transaction. If the process or session is interrupted, rerun
 `--check` and then the install command; preserved backups retain the prior
 content and mode.
@@ -141,6 +144,21 @@ list and geometry. ML4W may continue updating its generated palette and base
 glass theme, but its module enable/disable switches do not rewrite the active
 `config-custom`.
 
+The status bar runs as a vertical column on the left edge. On a 5120x1440
+ultrawide the scarce axis is vertical, so the bar spends 80px of abundant
+horizontal space instead of 37px of scarce vertical and windows keep the full
+screen height. ML4W 2.15 defaults to a floating Quickshell strip across the
+top; `.config/ml4w/settings/statusbar` selects Waybar instead and is tracked,
+because that selector being untracked is how an upgrade silently replaced a
+configured bar. Note that 2.15 also writes an empty
+`.config/ml4w/settings/waybar-disabled` flag that suppresses Waybar entirely; a
+manifest deploys files and cannot deploy an absence, so remove that file by
+hand if a future upgrade restores it.
+
+The bar adds privacy (microphone and screenshare), media, brightness, and CPU
+temperature readouts, which depend on PipeWire, Playerctl, Brightnessctl, and
+a `coretemp` hwmon source respectively.
+
 The desktop profile preserves the established physical Hyprland key chords,
 removes the random-wallpaper action, disables Kitty's cursor trail, pins Kitty's
 two green palette slots so a generated low-contrast green cannot hide added
@@ -150,11 +168,11 @@ That host layer specifically selects built-in `eDP-1`, ultrawide `DP-3` at
 `5120x1440@239.76Hz`, and the `tpacpi::kbd_backlight` device. Review it before
 using the profile on different hardware.
 
-The exact gate follows the active installer's `config.dotinst` version and
-`.config/ml4w/version/name`, never `.config/ml4w/version.json`, which upstream
-leaves stale: the legacy tree reported `2.12.0` there and upstream tag `2.15`
-still reports `2.12.3`. Neither profile claims that its source tree was a
-pristine release. Upstream identity, the mixed legacy baseline, and the
+`config.dotinst` still identifies the profile, its upstream, and its subfolder,
+and the gate checks all three; only its version field goes stale. Each layer's
+`profile.conf` records the release it was derived from as provenance rather than
+as something compared against the live tree. Neither profile claims that its
+source tree was a pristine release. Upstream identity, the mixed legacy baseline, and the
 derivation of the Lua layer are documented in each layer's `PROVENANCE.md`; the
 derived payloads' GPL boundary is documented in each layer's
 `LICENSES/README.md`.

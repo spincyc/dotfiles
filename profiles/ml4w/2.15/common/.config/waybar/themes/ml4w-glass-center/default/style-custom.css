@@ -1,4 +1,12 @@
-/* Load the selected ML4W palette and glass theme, then own its geometry.
+/* Fonts are inherited, not set here. ml4w-glass/style.css declares the stack
+   "Fira Sans Semibold", Font Awesome 7/6 Free+Brands, FontAwesome,
+   "Material Icons", Roboto, ... - note it does NOT list any Nerd Font, so
+   private-use glyphs resolve only through Pango's fallback. It also gives
+   #custom-notification its own font-family: "Material Icons", which is why
+   that module can use Material Symbols ligature names as literal text and
+   still render as an icon. Prefer codepoints Font Awesome 7 Free provides.
+
+   Load the selected ML4W palette and glass theme, then own its geometry.
    Geometry here is for a VERTICAL LEFT bar: the constraint is width, so
    horizontal padding is minimised and modules stack top to bottom. */
 @import 'style.css';

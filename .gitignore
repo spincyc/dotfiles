@@ -4,3 +4,8 @@
 *.swp
 *.swo
 .DS_Store
+
+# Claude Code writes project-scoped settings here at runtime: settings.json is
+# session state and settings.local.json holds machine-local permission grants.
+# Neither is portable configuration; the tracked seed is claude/settings.json.
+/.claude/
