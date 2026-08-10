@@ -32,7 +32,10 @@ hl.bind(mainMod .. " + ALT + I", hl.dsp.window.resize({ x = 0, y = -100, relativ
 -- Actions
 hl.bind(mainMod .. " + SHIFT + A", hl.dsp.exec_cmd(HYPRSCRIPTS .. "/toggle-animations.sh"), { description = "Toggle animations" })
 hl.bind(mainMod .. " + PRINT", hl.dsp.exec_cmd(HYPRSCRIPTS .. "/screenshot.sh"), { description = "Take a screenshot" })
-hl.bind(mainMod .. " + CTRL + Q", hl.dsp.exec_cmd(SCRIPTS .. "/ml4w-power"), { description = "Open the power menu" })
+-- ml4w-power is a flag-driven CLI (-l, -s, -e, -r, -p); with no argument it
+-- only prints help. wlogout is the menu, and unlike the Quickshell PowerApp
+-- it is a full-screen overlay rather than anchored to the right edge.
+hl.bind(mainMod .. " + CTRL + Q", hl.dsp.exec_cmd("pkill wlogout || wlogout -b 5 -p layer-shell"), { description = "Open the power menu" })
 hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("waypaper"), { description = "Open the wallpaper selector" })
 hl.bind(mainMod .. " + RETURN", hl.dsp.exec_cmd("pkill rofi || rofi -show drun -replace -i"), { description = "Open the application launcher" })
 hl.bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd("~/.config/waybar/launch.sh"), { description = "Reload the status bar" })
