@@ -19,6 +19,15 @@ hl.config({
     },
 
     input = {
+        -- ML4W 2.15's input.lua sets kb_options = "grp:alt_shift_toggle",
+        -- which makes xkb claim Alt+Shift as a layout-group switcher. xkb
+        -- consumes the combination before Hyprland sees it, so every
+        -- SHIFT+CTRL+ALT chord silently degrades to SHIFT+CTRL: the resize
+        -- binds land on the focus binds instead. The 2.9.9.5 baseline left
+        -- kb_options empty. Only one layout is configured here, so the
+        -- toggle has nothing to switch between and is pure breakage.
+        kb_options = "",
+
         numlock_by_default = false,
         follow_mouse = 1,
         mouse_refocus = false,
