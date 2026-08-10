@@ -195,15 +195,33 @@ check_profile >"$test_root/repaired-check.out"
 
 printf '\n# gate sentinel\n' \
   >>"$ml4w_root/.config/hypr/conf/custom.conf"
-write_live_metadata 0.0.0
-if run_profile >"$test_root/version-gate.out" 2>&1; then
-  fail "version gate accepted an incompatible profile"
+saved_loader="$test_root/hyprland.conf.saved"
+mv -- "$ml4w_root/.config/hypr/hyprland.conf" "$saved_loader"
+if run_profile >"$test_root/loader-missing.out" 2>&1; then
+  fail "layer selection accepted a tree with no Hyprland configuration"
 fi
-assert_file_contains "$test_root/version-gate.out" \
-  "unexpected live ML4W version: 0.0.0"
+assert_file_contains "$test_root/loader-missing.out" \
+  "no supported Hyprland configuration"
 assert_file_contains "$ml4w_root/.config/hypr/conf/custom.conf" \
   "# gate sentinel"
-write_live_metadata 2.9.9.5
+mv -- "$saved_loader" "$ml4w_root/.config/hypr/hyprland.conf"
+
+# A stale hyprland.conf survives an ML4W upgrade, so Lua must win when both
+# loaders exist. Selecting the hyprlang layer here would deploy dead config.
+printf '%s\n' \
+  'local f = io.open(os.getenv("HOME") .. "/.config/hypr/custom.lua", "r")' \
+  'if f then' \
+  '    f:close()' \
+  '    require("custom")' \
+  'end' \
+  >"$ml4w_root/.config/hypr/hyprland.lua"
+check_profile >"$test_root/lua-wins.out" 2>&1 ||
+  true
+assert_file_contains "$test_root/lua-wins.out" ".config/hypr/custom.lua"
+grep -Fq '.config/hypr/conf/custom.conf' "$test_root/lua-wins.out" &&
+  fail "a stale hyprland.conf selected the hyprlang layer" ||
+  true
+rm -- "$ml4w_root/.config/hypr/hyprland.lua"
 run_profile >"$test_root/post-gate-repair.out"
 
 kitty_custom="$ml4w_root/.config/kitty/custom.conf"
@@ -247,14 +265,17 @@ assert_file_contains "$test_root/symlink-parent.out" \
 rm -- "$waybar_theme_parent/default"
 mv -- "$saved_default" "$waybar_theme_parent/default"
 
-printf '%s\n' '2.9.9.5' 'unexpected trailing line' \
-  >"$ml4w_root/.config/ml4w/version/name"
-if check_profile >"$test_root/version-name.out" 2>&1; then
-  fail "version-name gate accepted trailing content"
+saved_dotinst="$test_root/config.dotinst.saved"
+cp -- "$ml4w_root/config.dotinst" "$saved_dotinst"
+printf '%s\n' \
+  '{"id":"com.other.dotfiles","version":"2.9.9.5","source":"https://github.com/mylinuxforwork/dotfiles.git","subfolder":"dotfiles"}' \
+  >"$ml4w_root/config.dotinst"
+if check_profile >"$test_root/profile-id.out" 2>&1; then
+  fail "identity gate accepted a foreign profile ID"
 fi
-assert_file_contains "$test_root/version-name.out" \
-  "unexpected live ML4W version name"
-printf '2.9.9.5\n' >"$ml4w_root/.config/ml4w/version/name"
+assert_file_contains "$test_root/profile-id.out" \
+  "unexpected live ML4W profile ID: com.other.dotfiles"
+cp -- "$saved_dotinst" "$ml4w_root/config.dotinst"
 
 waybar_launcher="$ml4w_root/.config/waybar/launch.sh"
 waybar_launcher_saved="$test_root/waybar-launch.saved"
@@ -437,12 +458,18 @@ fi
 assert_file_contains "$test_root/lua-loader-gate.out" \
   "live Hyprland schema does not load custom.lua"
 
-printf '{"id":"com.ml4w.dotfiles","version":"2.14.0","source":"https://github.com/mylinuxforwork/dotfiles.git","subfolder":"dotfiles"}\n' \
+# A stale config.dotinst version must not affect selection: ML4W never rewrites
+# it on upgrade, so a Lua tree routinely reports its first-install version.
+printf '%s\n' \
+  'local f = io.open(os.getenv("HOME") .. "/.config/hypr/custom.lua", "r")' \
+  'if f then' \
+  '    f:close()' \
+  '    require("custom")' \
+  'end' \
+  >"$lua_ml4w_root/.config/hypr/hyprland.lua"
+printf '{"id":"com.ml4w.dotfiles","version":"2.9.9.5","source":"https://github.com/mylinuxforwork/dotfiles.git","subfolder":"dotfiles"}\n' \
   >"$lua_ml4w_root/config.dotinst"
-if run_lua_profile --check >"$test_root/lua-version-gate.out" 2>&1; then
-  fail "layer selection accepted an unsupported ML4W version"
-fi
-assert_file_contains "$test_root/lua-version-gate.out" \
-  "unexpected live ML4W version: 2.14.0"
+run_lua_profile --check >"$test_root/lua-stale-version.out" 2>&1 ||
+  fail "a stale config.dotinst version broke Lua layer selection"
 
 printf 'ok - installer profile, drift, backup, and safety checks passed\n'

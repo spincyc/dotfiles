@@ -621,14 +621,6 @@ validate_existing_target() {
   fi
 }
 
-ml4w_profile_dir_for_version() {
-  case "$1" in
-    2.9.9.5) printf '%s\n' legacy-2.9.9.5 ;;
-    2.15) printf '%s\n' 2.15 ;;
-    *) return 1 ;;
-  esac
-}
-
 profile_value() {
   awk -F '|' -v wanted_key="$1" '
     $1 == wanted_key {
@@ -658,7 +650,6 @@ gate_ml4w_profile() {
   ml4w_root="$HOME/.mydotfiles/com.ml4w.dotfiles"
   active_profile_path="$HOME/.config/ml4w-dotfiles-installer/active.json"
   live_dotinst="$ml4w_root/config.dotinst"
-  live_version_name="$ml4w_root/.config/ml4w/version/name"
 
   assert_owned_directory "$HOME"
   assert_owned_directory "$HOME/.config"
@@ -666,16 +657,22 @@ gate_ml4w_profile() {
   assert_owned_directory "$HOME/.mydotfiles"
   assert_owned_directory "$ml4w_root"
 
-  # The live release selects the profile layer. ML4W moved its Hyprland
-  # configuration from hyprlang to Lua in 2.13.0, so the layers differ in both
-  # payload and expected loader and cannot share one directory.
-  validate_existing_target config.dotinst
-  assert_regular_owned_file "$live_dotinst"
-  live_profile_version=$(jq -er '.version | strings' "$live_dotinst") ||
-    die "invalid live ML4W profile version"
-  profile_version_dir=$(ml4w_profile_dir_for_version \
-    "$live_profile_version") ||
-    die "unexpected live ML4W version: $live_profile_version"
+  # The deployed Hyprland configuration format selects the profile layer, not a
+  # version marker. No version marker on disk survives an ML4W upgrade: the
+  # installer writes config.dotinst and .config/ml4w/version/name once at first
+  # install and never rewrites them, and upstream ships a stale version.json
+  # (2.12.3 at tag 2.15). ML4W moved to Lua in 2.13.0, so the loader itself is
+  # the only honest signal. Lua wins when both exist, because an upgraded tree
+  # keeps a stale hyprland.conf until ml4w-remove-conf deletes it.
+  validate_existing_target .config/hypr/hyprland.lua
+  validate_existing_target .config/hypr/hyprland.conf
+  if [ -f "$ml4w_root/.config/hypr/hyprland.lua" ]; then
+    profile_version_dir=2.15
+  elif [ -f "$ml4w_root/.config/hypr/hyprland.conf" ]; then
+    profile_version_dir=legacy-2.9.9.5
+  else
+    die "no supported Hyprland configuration in $ml4w_root/.config/hypr"
+  fi
 
   profile_dir="$repo_dir/profiles/ml4w/$profile_version_dir"
   profile_metadata="$profile_dir/profile.conf"
@@ -723,9 +720,14 @@ gate_ml4w_profile() {
     die "unsupported ML4W profile schema: $expected_schema"
   [ "$expected_profile_id" = com.ml4w.dotfiles ] ||
     die "unsupported ML4W profile ID: $expected_profile_id"
-  [ "$expected_version" = "$live_profile_version" ] ||
-    die "unsupported ML4W version: $expected_version"
-  ml4w_profile_dir_for_version "$expected_version_name" >/dev/null ||
+  # version and version_name are declarative provenance, recording the upstream
+  # release a layer was derived from. They are deliberately not compared against
+  # the live tree: see the layer-selection comment above.
+  case "$profile_version_dir" in
+    *"$expected_version") ;;
+    *) die "profile version does not match its layer: $expected_version" ;;
+  esac
+  [ "$expected_version_name" = "$expected_version" ] ||
     die "unsupported ML4W version name: $expected_version_name"
   [ "$expected_source" = \
     https://github.com/mylinuxforwork/dotfiles.git ] ||
@@ -739,6 +741,10 @@ gate_ml4w_profile() {
   [ "$active_profile_id" = "$expected_profile_id" ] ||
     die "ML4W profile is not active: $active_profile_id"
 
+  # config.dotinst still identifies the profile, its upstream, and its subfolder
+  # correctly. Only its version field goes stale across an upgrade.
+  validate_existing_target config.dotinst
+  assert_regular_owned_file "$live_dotinst"
   live_profile_id=$(jq -er '.id | strings' "$live_dotinst") ||
     die "invalid live ML4W profile ID"
   live_profile_source=$(jq -er '.source | strings' "$live_dotinst") ||
@@ -748,26 +754,10 @@ gate_ml4w_profile() {
 
   [ "$live_profile_id" = "$expected_profile_id" ] ||
     die "unexpected live ML4W profile ID: $live_profile_id"
-  [ "$live_profile_version" = "$expected_version" ] ||
-    die "unexpected live ML4W version: $live_profile_version"
   [ "$live_profile_source" = "$expected_source" ] ||
     die "unexpected live ML4W source: $live_profile_source"
   [ "$live_profile_subfolder" = "$expected_subfolder" ] ||
     die "unexpected live ML4W subfolder: $live_profile_subfolder"
-
-  validate_existing_target .config/ml4w/version/name
-  assert_regular_owned_file "$live_version_name"
-  awk -v expected_name="$expected_version_name" '
-    NR != 1 || $0 != expected_name {
-      exit 2
-    }
-    END {
-      if (NR != 1) {
-        exit 2
-      }
-    }
-  ' "$live_version_name" ||
-    die "unexpected live ML4W version name"
 
   for active_config_dir in hypr kitty ml4w swaync waybar; do
     active_config_path="$HOME/.config/$active_config_dir"
