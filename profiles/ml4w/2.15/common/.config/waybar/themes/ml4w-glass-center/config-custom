@@ -1,7 +1,9 @@
 {
   "layer": "top",
+  "position": "left",
+  "width": 80,
   "margin-top": 1,
-  "margin-bottom": 4,
+  "margin-bottom": 1,
   "margin-left": 1,
   "margin-right": 1,
   "spacing": 0,
@@ -9,25 +11,23 @@
     "~/.config/waybar/modules-custom.json"
   ],
   "modules-left": [
+    "custom/exit",
     "custom/appmenu",
-    "custom/empty"
-  ],
-  "modules-center": [
-    "hyprland/workspaces",
-    "custom/empty"
-  ],
-  "modules-right": [
+    "custom/ml4w-welcome",
+    "custom/notification",
     "custom/updates",
-    "pulseaudio",
-    "bluetooth",
+    "tray",
     "network",
+    "bluetooth",
+    "pulseaudio",
     "battery",
     "group/hardware",
-    "group/tools",
-    "tray",
-    "custom/notification",
-    "custom/exit",
-    "custom/ml4w-welcome",
+    "group/tools"
+  ],
+  "modules-center": [
     "clock"
+  ],
+  "modules-right": [
+    "hyprland/workspaces"
   ]
 }

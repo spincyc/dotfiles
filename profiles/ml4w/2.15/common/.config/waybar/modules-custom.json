@@ -12,8 +12,18 @@
       "default": ""
     },
     "persistent-workspaces": {
-      "*": 5
-    }
+      "*": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ]
+    },
+    "orientation": "vertical"
   },
   "custom/ml4w-welcome": {
     "on-click": "qs ipc call sidebar toggle",
@@ -40,7 +50,7 @@
     "on-scroll-down": "true"
   },
   "custom/updates": {
-    "format": "  {}",
+    "format": " {}",
     "escape": true,
     "return-type": "json",
     "exec": "~/.config/ml4w/scripts/ml4w-check-system-updates",
@@ -51,7 +61,7 @@
     "on-click-right": "~/.config/ml4w/settings/software.sh"
   },
   "custom/appmenu": {
-    "format": "Apps",
+    "format": "",
     "on-click": "~/.config/hypr/scripts/launcher.sh",
     "on-click-right": "~/.config/hypr/scripts/keybindings.sh",
     "tooltip-format": "Left: Open the application launcher\nRight: Show all keybindings"
@@ -100,14 +110,15 @@
     "on-scroll-down": "true"
   },
   "tray": {
-    "icon-size": 21,
-    "spacing": 10
+    "icon-size": 18,
+    "spacing": 6
   },
   "clock": {
-    "format": "{:%a %Y/%m/%d %H:%M}",
+    "format": "{:%H:%M}",
     "on-click": "qs ipc call calendar toggle",
     "timezone": "",
-    "tooltip": false
+    "tooltip": true,
+    "tooltip-format": "{:%A\n%Y-%m-%d}"
   },
   "custom/system": {
     "format": "",
@@ -116,36 +127,36 @@
     "on-scroll-down": "true"
   },
   "cpu": {
-    "format": "/ C {usage}% ",
+    "format": "C {usage}",
     "on-click": "~/.config/ml4w/settings/system-monitor.sh",
     "on-scroll-up": "true",
     "on-scroll-down": "true"
   },
   "memory": {
-    "format": "/ M {}% ",
+    "format": "M {}",
     "on-click": "~/.config/ml4w/settings/system-monitor.sh",
     "on-scroll-up": "true",
     "on-scroll-down": "true"
   },
   "disk": {
     "interval": 30,
-    "format": "D {percentage_used}% ",
+    "format": "D {percentage_used}",
     "path": "/",
     "on-click": "~/.config/ml4w/settings/system-monitor.sh",
     "on-scroll-up": "true",
     "on-scroll-down": "true"
   },
   "hyprland/language": {
-    "format": "/ K {short}",
+    "format": "K {short}",
     "on-scroll-up": "true",
     "on-scroll-down": "true"
   },
   "group/hardware": {
-    "orientation": "inherit",
+    "orientation": "vertical",
     "drawer": {
       "transition-duration": 300,
       "children-class": "not-memory",
-      "transition-left-to-right": false
+      "transition-left-to-right": true
     },
     "modules": [
       "custom/system",
@@ -156,11 +167,11 @@
     ]
   },
   "group/tools": {
-    "orientation": "inherit",
+    "orientation": "vertical",
     "drawer": {
       "transition-duration": 300,
       "children-class": "not-memory",
-      "transition-left-to-right": false
+      "transition-left-to-right": true
     },
     "modules": [
       "custom/tools",
@@ -171,10 +182,10 @@
     ]
   },
   "network": {
-    "format": "{ifname}",
-    "format-wifi": " {signalStrength}%",
-    "format-ethernet": "  {ifname}",
-    "format-disconnected": "Disconnected ⚠",
+    "format": "",
+    "format-wifi": "",
+    "format-ethernet": "",
+    "format-disconnected": "",
     "tooltip-format": " {ifname} via {gwaddr}",
     "tooltip-format-wifi": "  {ifname} @ {essid}\nIP: {ipaddr}\nStrength: {signalStrength}%\nFreq: {frequency}MHz\nUp: {bandwidthUpBits} Down: {bandwidthDownBits}",
     "tooltip-format-ethernet": " {ifname}\nIP: {ipaddr}\nUp: {bandwidthUpBits} Down: {bandwidthDownBits}",
@@ -189,9 +200,9 @@
       "warning": 30,
       "critical": 15
     },
-    "format": "{icon} {capacity}%",
-    "format-charging": "  {capacity}%",
-    "format-plugged": "  {capacity}%",
+    "format": "{icon} {capacity}",
+    "format-charging": " {capacity}",
+    "format-plugged": " {capacity}",
     "format-alt": "{icon}  {time}",
     "format-icons": [
       " ",
@@ -215,10 +226,10 @@
     "on-scroll-down": "true"
   },
   "pulseaudio": {
-    "format": "{icon}  {volume}%",
-    "format-bluetooth": "{volume}% {icon} {format_source}",
+    "format": "{icon}",
+    "format-bluetooth": "{icon}",
     "format-bluetooth-muted": " {icon} {format_source}",
-    "format-muted": " {format_source}",
+    "format-muted": "",
     "format-source": "{volume}% ",
     "format-source-muted": "",
     "format-icons": {
@@ -234,10 +245,12 @@
         ""
       ]
     },
-    "on-click": "pavucontrol"
+    "on-click": "pavucontrol",
+    "tooltip": true,
+    "tooltip-format": "Volume: {volume}%\n{desc}"
   },
   "bluetooth": {
-    "format": " {status}",
+    "format": "",
     "format-disabled": "",
     "format-off": "",
     "interval": 30,

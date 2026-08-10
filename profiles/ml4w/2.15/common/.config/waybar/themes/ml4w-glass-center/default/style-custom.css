@@ -1,4 +1,6 @@
-/* Load the selected ML4W palette and glass theme, then own its geometry. */
+/* Load the selected ML4W palette and glass theme, then own its geometry.
+   Geometry here is for a VERTICAL LEFT bar: the constraint is width, so
+   horizontal padding is minimised and modules stack top to bottom. */
 @import 'style.css';
 
 .modules-left,
@@ -9,13 +11,22 @@
     margin: 1px;
 }
 
+/* Vertical bar: spacing belongs on the block axis, not the inline axis. */
 label.module {
     border-radius: 0;
-    margin-left: 8px;
-    margin-right: 8px;
+    margin-top: 6px;
+    margin-bottom: 6px;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
 }
 
+/* ml4w-glass/style.css sets #workspaces { min-width: 176px } for a centred
+   horizontal bar. In a vertical bar that becomes the bar's minimum width and
+   Waybar warns "Requested width: 48 is less than the minimum width: 182". */
 #workspaces {
+    min-width: 0;
     padding: 1px;
 }
 
@@ -31,8 +42,8 @@ label.module {
 }
 
 #workspaces button {
-    margin: 0 1px;
-    padding: 0 1px;
+    margin: 1px 0;
+    padding: 1px 0;
 }
 
 tooltip {
@@ -42,12 +53,12 @@ tooltip {
 }
 
 #taskbar {
-    padding: 1px 0;
+    padding: 0 1px;
 }
 
 #taskbar button {
     border-radius: 0;
-    padding: 0 1px;
+    padding: 1px 0;
 }
 
 #custom-ml4w-welcome {
@@ -56,22 +67,42 @@ tooltip {
 }
 
 #custom-appmenu {
-    padding-left: 1px;
-    padding-right: 1px;
+    padding-top: 2px;
+    padding-bottom: 2px;
 }
 
 #custom-updates.yellow,
 #custom-updates.red {
     border-radius: 0;
-    margin: 1px 0 1px 1px;
-    padding: 0 1px;
+    margin: 1px 1px 0 1px;
+    padding: 1px 0;
 }
 
 #clock {
-    margin-left: 1px;
-    margin-right: 1px;
+    margin-top: 4px;
+    margin-bottom: 4px;
 }
 
 #tray {
-    padding: 0 1px;
+    padding: 1px 0;
+}
+
+/* Drawers open rightward, away from the screen edge, without widening the
+   bar itself. */
+#hardware,
+#tools {
+    padding: 0;
+}
+
+/* Left-align the bar contents. GTK CSS has no text-align and Waybar exposes
+   no alignment option, so shift the centred content toward the left edge with
+   asymmetric padding. Tune the right value to change how far it sits. */
+label.module {
+    padding-left: 2px;
+    padding-right: 14px;
+}
+
+#workspaces button {
+    padding-left: 2px;
+    padding-right: 14px;
 }
