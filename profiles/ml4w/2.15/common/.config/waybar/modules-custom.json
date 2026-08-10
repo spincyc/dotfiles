@@ -155,6 +155,7 @@
     "modules": [
       "custom/system",
       "disk",
+      "temperature",
       "cpu",
       "memory",
       "hyprland/language"
@@ -253,5 +254,63 @@
     "tooltip-format-enumerate-connected": "{device_alias}",
     "tooltip-format-enumerate-connected-battery": "{device_alias}\t| Battery life: {device_battery_percentage}%",
     "format-no-controller": ""
+  },
+  "backlight": {
+    "format": "{icon} {percent}",
+    "format-icons": [
+      "",
+      "",
+      ""
+    ],
+    "tooltip": true,
+    "tooltip-format": "Brightness: {percent}%",
+    "on-scroll-up": "brightnessctl -q s +5%",
+    "on-scroll-down": "brightnessctl -q s 5%-"
+  },
+  "temperature": {
+    "hwmon-path-abs": "/sys/devices/platform/coretemp.0/hwmon",
+    "input-filename": "temp1_input",
+    "interval": 5,
+    "critical-threshold": 90,
+    "format": "{icon} {temperatureC}",
+    "format-icons": [
+      "",
+      "",
+      ""
+    ],
+    "tooltip": true,
+    "tooltip-format": "CPU package: {temperatureC}°C",
+    "on-click": "~/.config/ml4w/settings/system-monitor.sh"
+  },
+  "mpris": {
+    "format": "{status_icon}",
+    "format-paused": "{status_icon}",
+    "status-icons": {
+      "playing": "",
+      "paused": "",
+      "stopped": ""
+    },
+    "tooltip": true,
+    "tooltip-format": "{title}\n{artist}",
+    "title-len": 40,
+    "artist-len": 30,
+    "interval": 2
+  },
+  "privacy": {
+    "icon-spacing": 2,
+    "icon-size": 16,
+    "transition-duration": 250,
+    "modules": [
+      {
+        "type": "screenshare",
+        "tooltip": true,
+        "tooltip-icon-size": 20
+      },
+      {
+        "type": "audio-in",
+        "tooltip": true,
+        "tooltip-icon-size": 20
+      }
+    ]
   }
 }
