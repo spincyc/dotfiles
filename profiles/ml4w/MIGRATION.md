@@ -97,7 +97,7 @@ deploys nothing, which is the correct outcome rather than a partial overlay.
 | --- | --- | --- |
 | 1 | `profiles/ml4w/2.15/` exists beside the legacy layer, five Hyprland files translated, installer selects a layer from the live release | Done 2026-08-08 |
 | 2 | Every hyprlang construct has a Lua equivalent, inferences flagged | Done 2026-08-08 |
-| 3 | Live ML4W upgraded to 2.15 and the Lua profile deployed | Pending. Needs a session restart |
+| 3 | Live ML4W upgraded to 2.15 and the Lua profile deployed | Done 2026-08-10 |
 | 4 | Legacy layer and this document deleted after 0.57 ships | Pending |
 
 Stage 1 also found that the migration is narrower than first scoped. Every ML4W
@@ -143,8 +143,8 @@ re-selected automatically the moment `config.dotinst` reads `2.9.9.5` again.
 | 2 | Restore the core links | `./install.sh` | ML4W's symlink deployment reclaims `~/.zshrc` for its own tree on every upgrade. This takes it back | Done |
 | 3 | Dry run | `./install.sh --check --profile ml4w --host-profile ultrawide-desktop` | Reports the Lua destinations as missing or drifted. If it names `conf/custom.conf`, layer selection is wrong — stop | Done |
 | 4 | Deploy | `./install.sh --profile ml4w --host-profile ultrawide-desktop` | A following `--check` exits clean | Done |
-| 5 | Restart the session | reboot, or log out and back in | The only way to move Hyprland from hyprlang to Lua. See the startup-resolution note above | Pending |
-| 6 | Exercise the bindings | — | Work through the table below | Pending |
+| 5 | Restart the session | reboot, or log out and back in | The only way to move Hyprland from hyprlang to Lua. See the startup-resolution note above | Done |
+| 6 | Exercise the bindings | — | Work through the table below | Done |
 | 7 | Clean up ML4W's orphans | `~/.config/ml4w/scripts/ml4w-remove-conf` | Deletes `hyprland.conf` and the replaced `.conf` files. Do this only once step 6 passes: until then that file is the rollback | Pending |
 
 If the Lua session fails to start cleanly, Hyprland loads its built-in config
@@ -156,6 +156,19 @@ the default binds give `SUPER + Q` for a terminal. From there, rename
 
 Syntax is proven; runtime behaviour is not. Ranked by how likely each is to be
 wrong.
+
+Confirmed working after the 2026-08-10 restart: all 58 binds registered with
+their descriptions, `hyprctl configerrors` is empty, `DP-3` runs at
+`5120x1440@239.761`, and every `custom.lua` scalar applied including
+`mouse_refocus`, `sensitivity`, and `preserve_split`.
+
+The Lua parser also surfaced a binding that had been dead for as long as it has
+existed. `XF86Lock` is not a keysym: it is absent from
+`xkbcommon-keysyms.h` and from X11's `XF86keysym.h`, and `xkbcli` rejects it.
+hyprlang accepted the string silently, so `bind = , XF86Lock, exec, hyprlock`
+never fired. It is removed rather than guessed at; identify the real key with
+`wev` before rebinding. Treat this as the general lesson: strings hyprlang
+accepted are not evidence that the binding worked.
 
 | Risk | Binding or setting | Notes |
 | --- | --- | --- |

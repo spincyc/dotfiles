@@ -62,7 +62,11 @@ hl.bind(mainMod .. " + F7", hl.dsp.exec_cmd("quodlibet --next"), { description =
 hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"), { locked = true, description = "Previous track" })
 hl.bind("XF86AudioMicMute", hl.dsp.exec_cmd("pactl set-source-mute @DEFAULT_SOURCE@ toggle"), { locked = true, description = "Mute microphone" })
 hl.bind("XF86Calculator", hl.dsp.exec_cmd("~/.config/ml4w/settings/calculator.sh"), { description = "Open the calculator" })
-hl.bind("XF86Lock", hl.dsp.exec_cmd("hyprlock"), { locked = true, description = "Lock the screen" })
+-- The legacy layer bound hyprlock to XF86Lock. That is not a keysym: it is
+-- absent from xkbcommon-keysyms.h and from X11's XF86keysym.h, and xkbcli
+-- rejects it, so no key ever emitted it and the bind never fired. hyprlang
+-- accepted the string silently; the Lua parser reports it. Identify the real
+-- key with `wev` before rebinding it.
 hl.bind("XF86Tools", hl.dsp.exec_cmd(ML4WSETTINGS), { description = "Open ML4W Settings" })
 
 hl.bind("code:238", hl.dsp.exec_cmd("brightnessctl -d tpacpi::kbd_backlight s +10"), { locked = true, repeating = true, description = "Increase keyboard backlight" })
