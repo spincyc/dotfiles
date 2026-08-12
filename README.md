@@ -292,7 +292,18 @@ loaded automatically and must not be committed.
 The managed `.zshenv` prepends `~/.local/bin` to `PATH` for every Zsh
 invocation, so pipx-installed tools such as `aiq` and `tmt` resolve in
 non-interactive shells, hooks, and agent sessions, not only in interactive
-terminals. It also prepends `~/.local/lib/python` to `PYTHONPATH` for the
+terminals.
+
+It also *appends* this repository's own `bin/` directory, so a tool added
+there is on `PATH` in the next shell with no reinstall and no `managed_links`
+entry. The location is resolved from `.zshenv` through its symlink, so the
+checkout works wherever it lives. Appending rather than prepending keeps
+repository tools from shadowing a system command of the same name; a tool
+that must win needs an explicit `~/.local/bin` link. Two consequences worth
+knowing: anything executable that lands in `bin/` becomes a command, including
+on a branch checkout, and `tools/` is deliberately left off `PATH` because
+those are repository checks run as `tools/<id>` or through `make`, with names
+like `verify` that should not become global commands. It also prepends `~/.local/lib/python` to `PYTHONPATH` for the
 repository-managed Python packages, dropping empty entries so the current
 directory never joins `sys.path` by accident.
 

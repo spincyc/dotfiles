@@ -221,11 +221,28 @@ def check_profile() -> None:
     except RuntimeError:
         pass
 
+    repository_bin = str(REPO_ROOT / "bin")
     with tempfile.TemporaryDirectory() as install_home:
         install_env = os.environ.copy()
         install_env["HOME"] = install_home
+        # Drop the entry from the inherited PATH so the check proves .zshenv
+        # added it rather than that this process already had it.
+        install_env["PATH"] = ":".join(
+            entry
+            for entry in install_env.get("PATH", "").split(":")
+            if entry and entry != repository_bin
+        )
         run(["./install.sh"], env=install_env)
         run(["./install.sh", "--check"], env=install_env)
+
+        shell_path = run(
+            ["zsh", "-c", "print -r -- $PATH"], env=install_env
+        ).strip()
+        if repository_bin not in shell_path.split(":"):
+            raise RuntimeError(
+                f".zshenv did not put {repository_bin} on PATH; "
+                "the symlink self-resolution may be broken"
+            )
 
 
 def main() -> int:
