@@ -12,6 +12,10 @@ state="$test_root/state"
 fake_bin="$test_root/bin"
 
 cleanup() {
+  # A held agent waits for a sentinel under $test_root; removing the root
+  # without releasing it would leave the process spinning forever.
+  : >"$test_root/slow-release" 2>/dev/null || true
+  kill "${first_agent:-}" "${second_agent:-}" 2>/dev/null || true
   case "$test_root" in
     "${TMPDIR:-/tmp}"/dotfiles-wt-test.*)
       rm -rf -- "$test_root"
@@ -36,7 +40,7 @@ fail() {
 # gh is bypassed by giving every clone an explicit file:// URL, so the suite
 # stays offline and independent of the caller's forge credentials.
 wt_run() {
-  WT_ROOT="$work" \
+  WT_ROOT="${wt_root:-$work}" \
   WT_MAX_AGENTS="${wt_max_agents:-2}" \
   WT_AGENT="${wt_agent:-fake-agent}" \
   WT_PROJECT="${wt_project:-}" \
@@ -279,6 +283,12 @@ fi
 assert_contains "$bad_out" 'is a repository, not an owner directory'
 rm -rf -- "$work/telos/bad"
 
+printf '# check ignores whatever lives under .scratch\n'
+git init --quiet -- "$work/telos/demo/.scratch"
+wt_run check >/dev/null 2>&1 ||
+  fail "a repository under .scratch failed the check"
+rm -rf -- "$work/telos/demo/.scratch"
+
 printf '# check fails when the default agent is missing\n'
 if missing_out=$(wt_agent=absent-agent wt_run check 2>&1); then
   fail "check passed with a missing default agent"
@@ -318,10 +328,216 @@ if third_out=$(wt_agent=slow-agent wt_run telos/demo 2>&1); then
   fail "a third agent started past the limit"
 fi
 assert_contains "$third_out" 'all 2 agent slots are busy'
+# A workspace an agent is running in is not swept out from under it.
+assert_contains "$(wt_run clean telos/demo)" 'an agent is running here'
+[ -d "$work/telos/demo" ] || fail "clean removed a workspace holding an agent"
+# Nor are its transient files swept by a tidy nobody aimed at it.
+mkdir -p -- "$work/telos/demo/.scratch"
+busy_tidy=$(wt_run tidy)
+assert_contains "$busy_tidy" 'kept     telos/demo  an agent is running here'
+assert_contains "$busy_tidy" '0 transient paths removed'
+[ -d "$work/telos/demo/.scratch" ] ||
+  fail "tidy swept a running agent's scratch"
+rm -rf -- "$work/telos/demo/.scratch"
+# A busy slot that cannot be identified protects every workspace, since the
+# one it holds is unknown.
+wt_run new telos/idle >/dev/null 2>&1
+rm -f -- "$state/wt/agents/slot-1.info"
+assert_contains "$(wt_run clean telos/idle)" 'an agent is running here'
+[ -d "$work/telos/idle" ] || fail "clean trusted an unnamed busy slot"
 : >"$test_root/slow-release"
 wait "$first_agent" || fail "the first held agent failed"
 wait "$second_agent" || fail "the second held agent failed"
 assert_contains "$(wt_run agents)" '0 of 2 slots in use'
+# Freed slots name nobody, so the workspace the unnamed slot protected is
+# now ordinary: clean it up before the sections that count workspaces.
+wt_run clean telos/idle >/dev/null || fail "clean refused a freed workspace"
+
+printf '# guidance sends transient items to .scratch\n'
+wt_run new telos/scratch >/dev/null 2>&1
+scratch_ws="$work/telos/scratch"
+assert_contains "$(cat "$scratch_ws/AGENTS.md")" \
+  'Always put transient items under `.scratch`'
+assert_contains "$(cat "$scratch_ws/AGENTS.md")" \
+  '`.scratch` at the top of this workspace'
+wt_run clone telos/scratch "file://$origins/spincyc/alpha" >/dev/null 2>&1 ||
+  fail "clone into the scratch workspace failed"
+scratch_repo="$scratch_ws/spincyc/alpha"
+assert_contains "$(cat "$scratch_repo/.git/info/exclude")" '.scratch/'
+
+printf '# a .scratch directory does not dirty a clone\n'
+mkdir -p -- "$scratch_repo/.scratch" "$scratch_ws/.scratch"
+printf 'note\n' >"$scratch_repo/.scratch/note.md"
+printf 'note\n' >"$scratch_ws/.scratch/note.md"
+[ -z "$(git -C "$scratch_repo" status --porcelain)" ] ||
+  fail ".scratch left the clone dirty"
+
+printf '# tidy --dry-run reports without removing\n'
+# A local exclude stands in for a project .gitignore: git clean -X removes
+# ignored build output, and nothing else.
+printf 'build.log\n' >>"$scratch_repo/.git/info/exclude"
+printf 'output\n' >"$scratch_repo/build.log"
+printf 'keep\n' >"$scratch_repo/untracked.md"
+dry_out=$(wt_run tidy --dry-run telos/scratch)
+assert_contains "$dry_out" 'would rm telos/scratch/.scratch'
+assert_contains "$dry_out" 'would rm telos/scratch/spincyc/alpha/.scratch'
+assert_contains "$dry_out" 'would rm telos/scratch/spincyc/alpha/build.log'
+assert_missing "$dry_out" 'untracked.md'
+[ -f "$scratch_repo/build.log" ] || fail "tidy --dry-run removed a file"
+[ -d "$scratch_repo/.scratch" ] || fail "tidy --dry-run removed .scratch"
+
+printf '# tidy removes scratch and ignored files only\n'
+tidy_out=$(wt_run tidy telos/scratch)
+assert_contains "$tidy_out" 'removed  telos/scratch/.scratch'
+assert_contains "$tidy_out" '3 transient paths removed'
+[ ! -e "$scratch_ws/.scratch" ] || fail "tidy left the workspace .scratch"
+[ ! -e "$scratch_repo/.scratch" ] || fail "tidy left a clone .scratch"
+[ ! -e "$scratch_repo/build.log" ] || fail "tidy left an ignored file"
+[ -f "$scratch_repo/untracked.md" ] || fail "tidy removed an untracked file"
+[ -f "$scratch_repo/README.md" ] || fail "tidy removed tracked content"
+rm -f -- "$scratch_repo/untracked.md"
+
+printf '# tidy gives a hand-made clone the .scratch exclusion\n'
+mkdir -p -- "$scratch_ws/spincyc/gamma"
+git clone --quiet "file://$origins/spincyc/beta" \
+  "$scratch_ws/spincyc/gamma" 2>/dev/null
+gamma_exclude="$scratch_ws/spincyc/gamma/.git/info/exclude"
+assert_missing "$(cat "$gamma_exclude")" '.scratch/'
+wt_run tidy telos/scratch >/dev/null
+assert_contains "$(cat "$gamma_exclude")" '.scratch/'
+rm -rf -- "$scratch_ws/spincyc/gamma"
+
+printf '# tidy with no workspace tidies the one you are standing in\n'
+mkdir -p -- "$scratch_repo/.scratch"
+printf 'note\n' >"$scratch_repo/.scratch/note.md"
+here_tidy=$(
+  cd "$scratch_repo" &&
+    WT_ROOT="$work" XDG_STATE_HOME="$state" PATH="$fake_bin:$PATH" \
+      "$wt" tidy
+)
+assert_contains "$here_tidy" 'removed  telos/scratch/spincyc/alpha/.scratch'
+assert_contains "$here_tidy" '1 transient path removed'
+[ ! -e "$scratch_repo/.scratch" ] || fail "tidy inside a clone left .scratch"
+
+printf '# tidy does not follow a .scratch symlink out of the workspace\n'
+mkdir -p -- "$test_root/precious"
+printf 'keep\n' >"$test_root/precious/keep.md"
+ln -s -- "$test_root/precious" "$scratch_repo/.scratch"
+wt_run tidy telos/scratch >/dev/null
+[ -f "$test_root/precious/keep.md" ] ||
+  fail "tidy deleted through a .scratch symlink"
+[ ! -e "$scratch_repo/.scratch" ] || fail "tidy left the .scratch symlink"
+
+printf '# tidy refuses to reach through a symlinked clone\n'
+outside_repo="$test_root/outside-repo"
+git init --quiet -- "$outside_repo"
+printf 'keep.log\n' >>"$outside_repo/.git/info/exclude"
+printf 'precious\n' >"$outside_repo/keep.log"
+ln -s -- "$outside_repo" "$scratch_ws/spincyc/linked"
+link_tidy=$(wt_run tidy telos/scratch)
+assert_contains "$link_tidy" 'spincyc/linked  a symlink'
+[ -f "$outside_repo/keep.log" ] ||
+  fail "tidy cleaned a repository outside the workspace"
+# A symlinked clone reads as unsaved work, which would mask the next check.
+rm -f -- "$scratch_ws/spincyc/linked"
+
+printf '# clean keeps a workspace holding anything wt cannot account for\n'
+printf 'plan\n' >"$scratch_ws/notes.md"
+stray_clean=$(wt_run clean telos/scratch)
+assert_contains "$stray_clean" 'not from wt: notes.md'
+[ -d "$scratch_ws" ] || fail "clean removed a workspace holding stray work"
+rm -f -- "$scratch_ws/notes.md"
+
+printf '# clean keeps a workspace whose clone has an unpushed side branch\n'
+git -C "$scratch_repo" checkout --quiet -b side
+printf 'side\n' >"$scratch_repo/side.md"
+git -C "$scratch_repo" add side.md
+git -C "$scratch_repo" -c user.email=t@e.invalid -c user.name=t \
+  commit --quiet -m side
+git -C "$scratch_repo" checkout --quiet feature/scratch
+assert_contains "$(wt_run clean telos/scratch)" 'unsaved: spincyc/alpha'
+[ -d "$scratch_ws" ] || fail "clean discarded an unpushed side branch"
+git -C "$scratch_repo" branch --quiet -D side
+
+printf '# clean keeps a workspace holding unsaved work\n'
+printf 'change\n' >>"$scratch_repo/README.md"
+unsaved_clean=$(wt_run clean telos/scratch)
+assert_contains "$unsaved_clean" \
+  'kept     telos/scratch  unsaved: spincyc/alpha'
+assert_contains "$unsaved_clean" '0 removed, 1 kept'
+[ -d "$scratch_ws" ] || fail "clean removed a workspace holding work"
+git -C "$scratch_repo" checkout --quiet -- README.md
+
+printf '# clean keeps the workspace holding the current directory\n'
+here_clean=$(
+  cd "$scratch_repo" &&
+    WT_ROOT="$work" XDG_STATE_HOME="$state" PATH="$fake_bin:$PATH" \
+      "$wt" clean telos/scratch
+)
+assert_contains "$here_clean" 'kept     telos/scratch  the current directory'
+assert_contains "$here_clean" '0 removed, 1 kept'
+[ -d "$scratch_ws" ] || fail "clean removed the current workspace"
+
+printf '# clean --dry-run removes nothing\n'
+# -n is the synonym, and either may follow the workspace.
+dry_clean=$(wt_run clean telos/scratch -n)
+assert_contains "$dry_clean" 'would rm telos/scratch'
+assert_contains "$dry_clean" '1 to remove, 0 kept'
+[ -d "$scratch_ws" ] || fail "clean --dry-run removed a workspace"
+
+printf '# clean removes a workspace whose work is pushed\n'
+clean_out=$(wt_run clean telos/scratch)
+assert_contains "$clean_out" 'removed  telos/scratch'
+[ ! -e "$scratch_ws" ] || fail "clean left a pushed workspace in place"
+[ -d "$work/telos/demo" ] || fail "clean touched another workspace"
+
+printf '# tidy leaves a .scratch the repository tracks\n'
+wt_run clone telos/tracked "file://$origins/spincyc/alpha" >/dev/null 2>&1
+tracked_repo="$work/telos/tracked/spincyc/alpha"
+mkdir -p -- "$tracked_repo/.scratch"
+printf 'kept\n' >"$tracked_repo/.scratch/keep.md"
+git -C "$tracked_repo" add --force .scratch/keep.md
+git -C "$tracked_repo" -c user.email=t@e.invalid -c user.name=t \
+  commit --quiet -m tracked
+tracked_out=$(wt_run tidy telos/tracked)
+assert_contains "$tracked_out" 'spincyc/alpha/.scratch  tracked'
+[ -f "$tracked_repo/.scratch/keep.md" ] ||
+  fail "tidy deleted a .scratch the repository tracks"
+wt_run rm --force telos/tracked >/dev/null
+
+printf '# clean prunes a project directory it emptied, and only that one\n'
+wt_run new spare/one >/dev/null 2>&1
+mkdir -p -- "$work/stray"
+prune_out=$(wt_run clean spare/one)
+assert_contains "$prune_out" 'removed  spare/one'
+assert_contains "$prune_out" 'pruned   spare  empty project'
+assert_missing "$prune_out" 'pruned   stray'
+[ ! -e "$work/spare" ] || fail "clean left an empty project directory"
+[ -d "$work/stray" ] || fail "clean pruned a project it never touched"
+rmdir -- "$work/stray"
+
+printf '# a sweep removes every finished workspace and keeps the rest\n'
+# A root of its own, so a sweep that removes things cannot disturb the
+# workspaces the sections below still need.
+sweep_root="$test_root/sweep"
+wt_root="$sweep_root" wt_run new sweep/empty >/dev/null 2>&1
+wt_root="$sweep_root" wt_run clone sweep/done \
+  "file://$origins/spincyc/alpha" >/dev/null 2>&1 ||
+  fail "clone into the swept workspace failed"
+wt_root="$sweep_root" wt_run clone hold/work \
+  "file://$origins/spincyc/beta" >/dev/null 2>&1 ||
+  fail "clone into the held workspace failed"
+printf 'change\n' >>"$sweep_root/hold/work/spincyc/beta/README.md"
+sweep_all=$(wt_root="$sweep_root" wt_run clean) ||
+  fail "a sweep with nothing to refuse reported failure"
+assert_contains "$sweep_all" 'removed  sweep/done'
+assert_contains "$sweep_all" 'removed  sweep/empty'
+assert_contains "$sweep_all" 'kept     hold/work  unsaved: spincyc/beta'
+assert_contains "$sweep_all" 'pruned   sweep  empty project'
+assert_contains "$sweep_all" '2 removed, 1 kept'
+[ ! -e "$sweep_root/sweep" ] || fail "the sweep left an emptied project behind"
+[ -d "$sweep_root/hold/work" ] || fail "the sweep removed unsaved work"
+rm -rf -- "$sweep_root"
 
 printf '# rm refuses unsaved work\n'
 if rm_out=$(wt_run rm telos/demo 2>&1); then
@@ -369,5 +585,15 @@ if link_out=$(wt_run rm telos/linked 2>&1); then
 fi
 assert_contains "$link_out" 'must not be a symlink'
 [ -d "$test_root/outside" ] || fail "rm removed the symlink target"
+
+printf '# a sweep reports what it refuses instead of following it\n'
+printf 'keep\n' >"$test_root/outside/keep.md"
+if sweep_out=$(wt_run clean 2>&1); then
+  fail "clean followed a symlinked workspace"
+fi
+assert_contains "$sweep_out" 'must not be a symlink'
+assert_contains "$sweep_out" '0 removed, 1 kept'
+[ -f "$test_root/outside/keep.md" ] ||
+  fail "clean deleted through the symlink"
 
 printf 'ok - wt\n'

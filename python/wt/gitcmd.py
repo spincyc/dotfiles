@@ -5,6 +5,7 @@
 verbs want.
 """
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -16,6 +17,15 @@ def available() -> bool:
     return shutil.which(GIT) is not None
 
 
+def _parsed_env() -> dict[str, str]:
+    """Everything `read` returns is parsed, so pin git's messages to C.
+
+    Under a translated locale a caller matching on git's own wording — as
+    the `git clean` reader does — silently sees nothing at all.
+    """
+    return {**os.environ, "LC_ALL": "C", "LANGUAGE": ""}
+
+
 def read(repo: Path, *args: str) -> tuple[int, str]:
     """Run git in repo and return (exit status, stripped stdout)."""
     result = subprocess.run(
@@ -24,6 +34,7 @@ def read(repo: Path, *args: str) -> tuple[int, str]:
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         check=False,
+        env=_parsed_env(),
     )
     return result.returncode, result.stdout.strip()
 

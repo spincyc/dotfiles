@@ -101,8 +101,13 @@ def _layout(config: Config) -> list[CheckResult]:
             results.append(
                 CheckResult(FAIL, f"{workspace.name} is itself a repository")
             )
+        # Dotted directories are not owner directories: .scratch is
+        # transient by contract, and whatever an agent put in it is its own
+        # business.
         for owner in sorted(
-            entry for entry in directory.iterdir() if entry.is_dir()
+            entry
+            for entry in directory.iterdir()
+            if entry.is_dir() and not entry.name.startswith(".")
         ):
             if (owner / ".git").exists():
                 results.append(

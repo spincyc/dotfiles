@@ -3,8 +3,9 @@
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable, Iterator
 
-from . import branches, guidance, names, repos
+from . import branches, guidance, names, repos, scratch
 from .config import Config
 from .errors import UnsavedWorkError, WtError
 
@@ -67,18 +68,94 @@ class Workspace:
             if repos.has_unsaved_work(self.path / name)
         ]
 
-    def remove(self, force: bool = False, cwd: Path | None = None) -> Path:
-        """Delete the workspace, refusing anything unsafe or unsaved."""
+    def unaccounted(self) -> list[str]:
+        """Everything in the workspace `wt` cannot explain, sorted.
+
+        A sweep decides a workspace is disposable from the state of the
+        clones it can find, so anything it cannot find has to stop it: a
+        repository cloned to the wrong depth, or a file an agent left at the
+        top instead of under `.scratch`, is work no clone reports.
+        """
+        target = self.require()
+        clones = set(self.repo_names())
+        owners = {name.split("/")[0] for name in clones}
+        strays: list[str] = []
+        for entry in sorted(target.iterdir(), key=lambda item: item.name):
+            name = entry.name
+            if name in guidance.FILENAMES:
+                continue
+            if name == scratch.NAME or entry.is_symlink():
+                # A symlink holds nothing; removing it loses no work.
+                continue
+            if not entry.is_dir() or name not in owners:
+                strays.append(name)
+                continue
+            strays += [
+                f"{name}/{child.name}"
+                for child in sorted(
+                    entry.iterdir(), key=lambda item: item.name
+                )
+                if f"{name}/{child.name}" not in clones
+            ]
+        return strays
+
+    def tidy(self, dry_run: bool = False) -> Iterator[tuple[str, str]]:
+        """Delete the transient files, keeping the workspace itself.
+
+        Yields ("removed", path) as each path goes and ("tracked", path) for
+        a `.scratch` Git tracks, which is left where it is. Yielding as the
+        work happens is what keeps the account honest when a later
+        repository fails.
+        """
+        target = self.checked_target()
+
+        if scratch.present(target):
+            if not dry_run:
+                scratch.remove(target / scratch.NAME)
+            yield "removed", scratch.NAME
+
+        for name in self.repo_names():
+            repo = target / name
+            # discover follows symlinks, and git would happily clean a
+            # repository the workspace only points at.
+            if repo.is_symlink() or repo.resolve() != target / name:
+                yield "skipped", name
+                continue
+            if not dry_run:
+                # A clone made by hand never got the exclusion; give it one
+                # before its scratch directory can dirty the repository.
+                scratch.ensure_exclude(repo)
+            if scratch.present(repo):
+                committed = scratch.tracked(repo)
+                if committed:
+                    yield "tracked", f"{name}/{scratch.NAME}"
+                else:
+                    if not dry_run:
+                        scratch.remove(repo / scratch.NAME)
+                    yield "removed", f"{name}/{scratch.NAME}"
+            for path in scratch.clean_ignored(repo, dry_run):
+                yield "removed", f"{name}/{path}"
+
+    def checked_target(self) -> Path:
+        """The workspace directory, proven to be the one `wt` owns.
+
+        Every destructive verb goes through here: an intermediate symlink
+        would otherwise let a workspace name reach any directory at all.
+        """
         target = self.require()
         names.assert_owned_directory(target)
-
         resolved = target.resolve()
         expected = self.config.root.resolve() / self.name
         if resolved != expected:
             raise WtError(
-                f"refusing to remove a path resolving outside "
+                f"refusing to touch a path resolving outside "
                 f"{self.config.root}: {target}"
             )
+        return target
+
+    def remove(self, force: bool = False, cwd: Path | None = None) -> Path:
+        """Delete the workspace, refusing anything unsafe or unsaved."""
+        resolved = self.checked_target().resolve()
 
         here = (cwd or Path.cwd()).resolve()
         if here == resolved or resolved in here.parents:
@@ -124,6 +201,34 @@ def listing(config: Config) -> list[Workspace]:
         ):
             found.append(Workspace(f"{project.name}/{slug.name}", config))
     return found
+
+
+def prune_projects(config: Config, projects: Iterable[str]) -> list[str]:
+    """Remove the named project directories, if emptied. Returns those gone.
+
+    A project is only a grouping directory, so one holding no workspace
+    carries no information; `wt new` recreates it the moment it is named
+    again. Only the projects a caller has just emptied are considered: an
+    empty project directory someone else made is not this command's business.
+    """
+    here = Path.cwd().resolve()
+    pruned: list[str] = []
+    for name in sorted(set(projects)):
+        project = config.root / name
+        if project.is_symlink() or not project.is_dir():
+            continue
+        # Standing in a project directory is not standing in a workspace,
+        # so nothing else stops this one from vanishing underfoot.
+        if project.resolve() == here:
+            continue
+        try:
+            if any(project.iterdir()):
+                continue
+            project.rmdir()
+        except OSError:
+            continue
+        pruned.append(name)
+    return pruned
 
 
 def current(config: Config, cwd: Path | None = None) -> Workspace | None:

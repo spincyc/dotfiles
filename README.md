@@ -218,7 +218,21 @@ has left the branch, and `WT_BRANCH_PREFIX` renames the `feature` half.
 Creating a workspace writes `AGENTS.md` there, with `CLAUDE.md` and
 `GEMINI.md` deferring to it, so every agent is told to clone into that
 directory owner-prefixed and to commit on the workspace branch. The files are
-written once; `wt new --force` rewrites them after the template changes.
+written once; `wt new --force [<workspace>]` rewrites them after the template
+changes — `--force` must come first — so an existing workspace keeps the
+instructions it was created with until then.
+
+That guidance also gives transient work a home. Notes, logs, scratch scripts,
+downloaded samples, and experiment output belong under `.scratch`, in two
+places and no others: `<workspace>/.scratch` for anything that is not about
+one repository, and `<owner>/<repo>/.scratch` at the top of a clone. `wt
+clone` adds `.scratch/` to each new clone's `.git/info/exclude`, so scratch
+there stays out of `git status`, out of `git add .`, and out of the way of
+`wt clean`. That exclusion is local and is never committed, so it costs the
+cloned repository nothing. A clone made by hand has none until a real
+`wt tidy` gives it one, and a repository that already tracks something under
+`.scratch` is not covered at all — `wt tidy` reports those and leaves them
+alone. `wt tidy` is what empties the rest.
 
 A workspace keeps no work ledger. `wt` exports `AIQ_DISABLE=1` into the agent,
 which switches the installed AIQ hooks off for that session, and the workspace
@@ -248,15 +262,50 @@ wt fetch telos/agent-sync               # or pull, --ff-only
 wt agents                               # occupied and free agent slots
 wt check                                # environment and layout sanity check
 wt rm telos/agent-sync                  # refuses uncommitted, unpushed, or stashed work
+wt clean --dry-run                      # the workspaces a sweep would remove
+wt tidy --dry-run telos/agent-sync      # what tidy would delete, ignored files too
 ```
 
 A verb reads its first argument as the workspace when that workspace already
 exists, or when the current directory is not inside one; otherwise it acts on
 the workspace you are standing in. `wt pwd` is the exception that never reads
 an argument: it answers *where am I*, printing the root of the workspace the
-current directory belongs to and failing outside `WT_ROOT`. `wt` cannot change
-the calling shell's directory, so use `cd "$(wt path telos/agent-sync)"`, or
+current directory belongs to and failing outside `WT_ROOT`. `clean` and
+`tidy` are stricter: a first argument must name an existing workspace or the
+command fails, and `wt clean` inside a workspace still sweeps all of them,
+keeping only the one you are standing in. `wt` cannot change the calling
+shell's directory, so use `cd "$(wt path telos/agent-sync)"`, or
 `cd "$(wt pwd)"` to climb back out of a clone.
+
+`wt rm` and `wt clean` divide the work of throwing a workspace away. `wt rm`
+disposes of one named workspace and takes `--force`; `wt clean` sweeps, and
+with no argument considers every workspace under `WT_ROOT`. It removes each
+workspace whose work is already saved, by the test `wt rm` uses: nothing
+uncommitted and nothing untracked, since a stray untracked file counts as
+work; nothing stashed; and every local branch has an upstream it is not
+ahead of. It keeps, and reports the reason for, any workspace that holds
+unsaved work, currently runs an agent in one of the slots below, contains the
+current directory, or holds anything `wt` cannot account for — a clone at the
+wrong depth, or a file left at the top instead of under `.scratch`. It then
+removes any project directory it has emptied, and exits nonzero if it refused
+a workspace outright, as it does for one reached through a symlink. It has no
+`--force`: discarding unsaved work stays an explicit, single-workspace
+decision. `--dry-run` (or `-n`) reports what it would remove and removes
+nothing.
+
+`wt tidy` deletes Git-ignored files as well as `.scratch`, and ignored does
+not mean disposable — a virtualenv and `node_modules` cost time to rebuild,
+and a local `.env` may not be recoverable at all — so run `--dry-run` first.
+It keeps the workspace and deletes the workspace's own `.scratch`, each
+clone's `.scratch`, and every ignored file in each clone through
+`git clean -Xd`, which leaves tracked files, unignored untracked files, and
+nested repositories alone. A `.scratch` the repository tracks is reported and
+kept, and a clone that is only a symlink is skipped. A real run also gives
+each clone the `.scratch/` exclusion if it is missing, before deleting
+anything; `--dry-run` writes nothing at all. Given a workspace it tidies that
+one, otherwise the workspace you are standing in, otherwise every workspace;
+either way it spares a workspace with an agent running in it, unless that
+workspace is the one you are standing in.
 
 Concurrent agents are capped. Each launch holds one slot as an open `flock`
 descriptor that survives the exec into the agent, so the kernel releases it
@@ -290,10 +339,12 @@ for workspace in workspaces.listing(config):
 ```
 
 The modules are separated so each is usable alone: `wt.config` settings,
-`wt.names` name and path safety, `wt.gitcmd` a git runner, `wt.repos`
-discovery and status, `wt.branches` the workspace branch, `wt.clone` clone
-specs, `wt.guidance` the workspace documents, `wt.workspaces` creation and
-resolution, `wt.slots` the flock concurrency limit, `wt.checks` the sanity
+`wt.errors` the user-facing error types, `wt.names` name and path safety,
+`wt.gitcmd` a git runner, `wt.repos` discovery and status, `wt.branches` the
+workspace branch, `wt.clone` clone specs, `wt.guidance` the workspace
+documents, `wt.scratch` the `.scratch` convention and its local Git
+exclusion, `wt.workspaces` creation and resolution, `wt.slots` the flock
+concurrency limit, `wt.checks` the sanity
 check, and `wt.cli` the command line. Nothing outside `wt.cli` prints.
 
 Run the isolated `wt` suite, which uses temporary roots and local origins and

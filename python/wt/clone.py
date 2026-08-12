@@ -11,7 +11,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import branches
+from . import branches, scratch
 from .errors import WtError
 from .names import is_safe_component
 
@@ -85,4 +85,7 @@ def into(
         raise WtError(
             f"cloned {spec.name}, but it would not go on branch {branch}"
         )
+    # Local, never committed: transient files go under .scratch here, and a
+    # clone that hides them cannot be mistaken for one holding work.
+    scratch.ensure_exclude(target)
     return True

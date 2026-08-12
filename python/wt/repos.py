@@ -103,14 +103,44 @@ def status(workspace_dir: Path, name: str) -> RepoStatus:
     )
 
 
+def unpublished_branches(repo: Path) -> list[str]:
+    """Every local branch holding commits no upstream has received.
+
+    Checking HEAD alone would discard a side branch: work parked on one
+    while the workspace branch went out is still work.
+    """
+    listed = gitcmd.value(
+        repo,
+        "for-each-ref",
+        "--format=%(refname:short)%09%(upstream:short)",
+        "refs/heads",
+    )
+    if not listed:
+        return []
+    unpublished: list[str] = []
+    for line in listed.splitlines():
+        branch, _, upstream = line.partition("\t")
+        if not upstream:
+            unpublished.append(branch)
+            continue
+        ahead = _count(repo, f"{upstream}..{branch}")
+        if ahead is None or ahead > 0:
+            unpublished.append(branch)
+    return unpublished
+
+
 def has_unsaved_work(repo: Path) -> bool:
     """True when removing the workspace would lose work.
 
     A branch with no upstream counts as unsaved: nothing has received it.
+    Every failure to answer counts as unsaved too, since the question is
+    whether deleting is safe.
     """
     if is_dirty(repo):
         return True
     if gitcmd.value(repo, "stash", "list"):
         return True
     ahead = _count(repo, "@{upstream}..HEAD")
-    return ahead is None or ahead > 0
+    if ahead is None or ahead > 0:
+        return True
+    return bool(unpublished_branches(repo))

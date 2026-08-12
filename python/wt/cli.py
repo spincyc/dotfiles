@@ -39,8 +39,15 @@ Verbs:
   pull [<workspace>]              git pull --ff-only in every repo
   agents                          Show occupied and free agent slots
   check                           Sanity-check the environment and layout
+  tidy [--dry-run] [<workspace>]  Delete .scratch and Git-ignored files
+  clean [--dry-run] [<workspace>] Remove workspaces whose work is all pushed
   rm [--force] <workspace>        Remove a workspace holding no unsaved work
   help                            Show this message
+
+Transient files belong under .scratch, at the top of a workspace or of a
+clone; wt tidy deletes those and whatever the clones ignore. Given no
+workspace, wt clean sweeps them all, keeping any that holds unsaved work,
+runs an agent, or contains the current directory. Both take -n for --dry-run.
 
 A verb reads its first argument as the workspace when that workspace already
 exists, or when the current directory is not inside one. Otherwise the
@@ -65,6 +72,12 @@ def _take_force(args: list[str]) -> tuple[bool, list[str]]:
     if args and args[0] == "--force":
         return True, args[1:]
     return False, args
+
+
+def _take_dry_run(args: list[str]) -> tuple[bool, list[str]]:
+    """Read -n or --dry-run from wherever in the arguments it was typed."""
+    kept = [arg for arg in args if arg not in ("-n", "--dry-run")]
+    return len(kept) != len(args), kept
 
 
 def _print_repo(status: repos.RepoStatus, indent: str = "") -> None:
@@ -259,6 +272,138 @@ def cmd_check(config: Config, args: list[str]) -> int:
     return 0
 
 
+def _named_target(
+    config: Config, args: list[str], verb: str
+) -> workspaces.Workspace | None:
+    """The workspace a sweeping verb was pointed at, None when it was not.
+
+    What an unnamed sweep covers is left to the verb; the two disagree.
+    """
+    if len(args) > 1:
+        raise UsageError(f"{verb} takes only a workspace")
+    if not args:
+        return None
+    workspace = workspaces.named(config, args[0])
+    workspace.require()
+    return workspace
+
+
+def _keep_reason(
+    workspace: workspaces.Workspace,
+    here: workspaces.Workspace | None,
+    busy: slots.BusyAgents,
+) -> str:
+    """Why a sweep spares this workspace, or empty when it can go.
+
+    The cheap facts come first, so a busy or current workspace is never
+    asked to walk its clones.
+    """
+    if here is not None and workspace.name == here.name:
+        return "the current directory"
+    if busy.holds(workspace.name):
+        return "an agent is running here"
+    unsaved = workspace.has_unsaved_work()
+    if unsaved:
+        return f"unsaved: {' '.join(unsaved)}"
+    strays = workspace.unaccounted()
+    if strays:
+        return f"not from wt: {' '.join(strays)}"
+    return ""
+
+
+def cmd_tidy(config: Config, args: list[str]) -> int:
+    """Tidy the workspace you named, or the one you are standing in.
+
+    Only from outside the root does an unnamed tidy mean all of them, and
+    that sweep spares a workspace with a running agent; a named one is not
+    second-guessed, since an agent tidying the workspace it was launched
+    into holds that slot itself.
+    """
+    dry_run, args = _take_dry_run(args)
+    here = workspaces.current(config)
+    chosen = _named_target(config, args, "tidy") or here
+    targets = workspaces.listing(config) if chosen is None else [chosen]
+    if not targets:
+        print(f"No workspaces under {config.root}")
+        return 0
+
+    # The workspace an agent is standing in is its own to tidy; every other
+    # occupied one keeps its build, whether it was named or merely swept up.
+    busy = _pool(config).busy_agents()
+    mine = here.name if here is not None else ""
+    word = "would rm" if dry_run else "removed"
+    status = 0
+    total = 0
+    for workspace in targets:
+        if workspace.name != mine and busy.holds(workspace.name):
+            print(f"{'kept':<9}{workspace.name}  an agent is running here")
+            continue
+        try:
+            for kind, path in workspace.tidy(dry_run=dry_run):
+                if kind == "removed":
+                    total += 1
+                    print(f"{word:<9}{workspace.name}/{path}")
+                elif kind == "tracked":
+                    print(f"{'kept':<9}{workspace.name}/{path}  tracked")
+                else:
+                    print(f"{'kept':<9}{workspace.name}/{path}  a symlink")
+        except WtError as error:
+            print(f"wt: {error.message}", file=sys.stderr)
+            status = 1
+    noun = "path" if total == 1 else "paths"
+    print(f"{total} transient {noun} {'to remove' if dry_run else 'removed'}")
+    return status
+
+
+def cmd_clean(config: Config, args: list[str]) -> int:
+    """Sweep out every workspace whose work is already saved.
+
+    There is deliberately no --force: discarding unsaved work stays a named,
+    single-workspace decision made through `wt rm`.
+    """
+    dry_run, args = _take_dry_run(args)
+    named = _named_target(config, args, "clean")
+    targets = [named] if named else workspaces.listing(config)
+    if not targets:
+        print(f"No workspaces under {config.root}")
+        return 0
+
+    here = workspaces.current(config)
+    busy = _pool(config).busy_agents()
+    word = "would rm" if dry_run else "removed"
+    status = 0
+    removed = 0
+    kept = 0
+    emptied: list[str] = []
+    for workspace in targets:
+        try:
+            # Prove the path is one wt owns before anything else reads it,
+            # and before a dry run promises a removal the real run refuses.
+            # A workspace that fails this is a defect, not a thing to keep.
+            workspace.checked_target()
+            reason = _keep_reason(workspace, here, busy)
+            if not reason and not dry_run:
+                workspace.remove()
+        except WtError as error:
+            print(f"wt: {error.message}", file=sys.stderr)
+            status = 1
+            kept += 1
+            continue
+        if reason:
+            print(f"{'kept':<9}{workspace.name}  {reason}")
+            kept += 1
+            continue
+        print(f"{word:<9}{workspace.name}")
+        removed += 1
+        if not dry_run:
+            emptied.append(workspace.project)
+
+    for project in workspaces.prune_projects(config, emptied):
+        print(f"{'pruned':<9}{project}  empty project")
+    print(f"{removed} {'to remove' if dry_run else 'removed'}, {kept} kept")
+    return status
+
+
 def cmd_rm(config: Config, args: list[str]) -> int:
     force, args = _take_force(args)
     if len(args) != 1:
@@ -334,6 +479,8 @@ VERBS = {
     "pull": cmd_pull,
     "agents": cmd_agents,
     "check": cmd_check,
+    "tidy": cmd_tidy,
+    "clean": cmd_clean,
     "rm": cmd_rm,
 }
 

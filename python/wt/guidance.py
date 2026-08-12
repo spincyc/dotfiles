@@ -9,6 +9,7 @@ from pathlib import Path
 
 CANONICAL = "AGENTS.md"
 POINTERS = ("CLAUDE.md", "GEMINI.md")
+FILENAMES = frozenset({CANONICAL, *POINTERS})
 
 _POINTER = """# Agent instructions
 
@@ -61,8 +62,36 @@ Rules:
   `~/git`. The clones here are independent; changes here do not reach them.
 - Keep unrelated work out of this workspace. One workspace, one line of work.
 - Everything below this directory is disposable. `wt rm {workspace}` deletes
-  it once no repository holds uncommitted, unpushed, or stashed work, so
-  leave nothing here that is not committed and pushed.
+  it once no repository holds uncommitted, unpushed, or stashed work, and
+  `wt clean` sweeps every workspace that has reached that state. Leave
+  nothing here that is not committed and pushed.
+
+## Always put transient items under `.scratch`
+
+Everything you create that is not going into a commit belongs under a
+`.scratch` directory: notes, plans, logs, scratch scripts, downloaded
+samples, experiment output, anything else you would otherwise drop beside
+the code. Two places, and no others:
+
+- `.scratch` at the top of this workspace, for anything that is not about
+  one repository.
+- `<owner>/<repo>/.scratch` at the top of a clone, for anything that is.
+
+Every clone made by `wt clone` excludes `.scratch/` in its
+`.git/info/exclude`, so scratch files there never dirty the repository and
+never reach a commit by accident. A clone you made by hand has no such
+exclusion until a real `wt tidy` gives it one; add the line yourself if you
+want it sooner.
+
+Anything you leave outside those two places holds this workspace open. An
+untracked file beside the code is indistinguishable from work you forgot to
+commit, and a stray file at the top of this directory is something `wt` can
+make no sense of; `wt clean` keeps the workspace in either case.
+
+`wt tidy` deletes both `.scratch` directories and everything the clones
+ignore, without asking — including ignored build output such as a
+virtualenv or `node_modules`. `wt tidy --dry-run` reports and deletes
+nothing. Anything you leave in `.scratch` is gone at the next tidy.
 
 ## No work ledger here
 
@@ -86,6 +115,8 @@ layout rules above; it never overrides repository or personal guidance.
     wt ls                                # workspaces and their repos
     wt status {workspace}
     wt git {workspace} -- fetch --prune
+    wt tidy --dry-run                    # what tidy would delete, and where
+    wt tidy                              # delete it, ignored build output too
 """
 
 

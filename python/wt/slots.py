@@ -24,6 +24,32 @@ class SlotState:
     busy: bool
     info: str = ""
 
+    @property
+    def workspace(self) -> str:
+        """The workspace this slot was taken for, or empty when unnamed."""
+        for token in self.info.split():
+            key, separator, value = token.partition("=")
+            if separator and key == "workspace":
+                return value
+        return ""
+
+
+@dataclass(frozen=True)
+class BusyAgents:
+    """Which workspaces hold a running agent, and whether one is unknown."""
+
+    workspaces: frozenset[str]
+    unnamed: bool = False
+
+    def holds(self, workspace: str) -> bool:
+        """True when an agent may be running in this workspace.
+
+        A busy slot whose info file is missing or unreadable makes this true
+        of every workspace: the one it holds cannot be identified, and
+        guessing wrong deletes the tree an agent is working in.
+        """
+        return self.unnamed or workspace in self.workspaces
+
 
 class SlotPool:
     """A fixed number of agent slots below one directory."""
@@ -91,6 +117,20 @@ class SlotPool:
             # Closing drops the probe's lock; the holder's is untouched.
             os.close(fd)
         return True
+
+    def busy_agents(self) -> "BusyAgents":
+        """Which workspaces are occupied, from one pass over the slots."""
+        states = self.survey()
+        return BusyAgents(
+            workspaces=frozenset(
+                state.workspace
+                for state in states
+                if state.busy and state.workspace
+            ),
+            unnamed=any(
+                state.busy and not state.workspace for state in states
+            ),
+        )
 
     def survey(self) -> list[SlotState]:
         """The state of every slot, in order."""

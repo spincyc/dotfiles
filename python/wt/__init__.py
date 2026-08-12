@@ -11,8 +11,10 @@ The modules are meant to be reused on their own:
 ``wt.names``       workspace-name normalisation and path safety
 ``wt.gitcmd``      a thin ``git`` runner
 ``wt.repos``       repository discovery and per-repository status
+``wt.branches``    the workspace branch
 ``wt.clone``       clone-spec parsing and cloning
 ``wt.guidance``    the per-workspace agent guidance documents
+``wt.scratch``     the ``.scratch`` convention and its local Git exclusion
 ``wt.workspaces``  workspace creation, listing, and resolution
 ``wt.slots``       the flock-backed concurrent-agent limit
 ``wt.checks``      the environment and layout sanity check
@@ -20,6 +22,7 @@ The modules are meant to be reused on their own:
 """
 
 __all__ = [
+    "branches",
     "checks",
     "cli",
     "clone",
@@ -29,6 +32,7 @@ __all__ = [
     "guidance",
     "names",
     "repos",
+    "scratch",
     "slots",
     "workspaces",
 ]
