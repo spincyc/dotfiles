@@ -297,12 +297,21 @@ class Workspace:
         if reasons:
             raise RemovalRefused(self.name, reasons)
 
-        try:
-            shutil.rmtree(resolved)
-        except OSError as error:
+        # rmtree deletes everything it can before raising, so a refusal
+        # partway through leaves a gutted tree. Saying only "could not
+        # remove" would describe that as though nothing had happened.
+        refused: list[str] = []
+
+        def note(function, path, excinfo) -> None:
+            refused.append(str(path))
+
+        shutil.rmtree(resolved, onexc=note)
+        if refused:
             raise WtError(
-                f"could not remove {self.name}: {error}"
-            ) from error
+                f"partly removed {self.name}: {len(refused)} paths could "
+                f"not be deleted, starting at {refused[0]}; what remains is "
+                f"an incomplete tree, not the workspace you had"
+            )
         return resolved
 
 

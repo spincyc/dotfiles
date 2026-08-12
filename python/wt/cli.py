@@ -800,12 +800,21 @@ def _near_miss(config: Config, wanted: str) -> str | None:
     Launching creates whatever name it is given, so a slip of the fingers
     used to mint a second workspace, on a second branch, and drop the agent
     into it with no repositories and no complaint.
+
+    A name that merely extends an existing one is not a typo: `api2` and
+    `api-v2` beside `api` are how anyone names the next piece of work, and
+    refusing those would cost more than the slip does.
     """
     existing = [ws.name for ws in workspaces.listing(config)]
     if wanted in existing:
         return None
     close = difflib.get_close_matches(wanted, existing, n=1, cutoff=0.85)
-    return close[0] if close else None
+    if not close:
+        return None
+    typed, other = wanted.rpartition("/")[2], close[0].rpartition("/")[2]
+    if typed.startswith(other) or other.startswith(typed):
+        return None
+    return close[0]
 
 
 def launch(config: Config, agent: str, args: list[str]) -> int:
