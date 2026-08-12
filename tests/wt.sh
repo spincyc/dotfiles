@@ -216,6 +216,25 @@ printf '# ls reports a dirty worktree\n'
 printf 'change\n' >>"$work/telos/demo/spincyc/alpha/README.md"
 assert_contains "$(wt_run ls)" 'dirty'
 
+printf '# pwd reports the workspace holding the current directory\n'
+mkdir -p -- "$work/telos/demo/spincyc/alpha/deep/deeper"
+pwd_out=$(
+  cd "$work/telos/demo/spincyc/alpha/deep/deeper"
+  WT_ROOT="$work" XDG_STATE_HOME="$state" PATH="$fake_bin:$PATH" "$wt" pwd
+) || fail "pwd failed inside a clone"
+[ "$pwd_out" = "$work/telos/demo" ] ||
+  fail "pwd returned the wrong directory: $pwd_out"
+rm -rf -- "$work/telos/demo/spincyc/alpha/deep"
+if outside_out=$(cd "$test_root" && wt_run pwd 2>&1); then
+  fail "pwd answered outside the workspace root"
+fi
+assert_contains "$outside_out" 'not inside a workspace under'
+if project_out=$(cd "$work/telos" && wt_run pwd 2>&1); then
+  fail "pwd answered in a project directory"
+fi
+assert_contains "$project_out" 'not inside a workspace under'
+wt_run pwd telos/demo >/dev/null 2>&1 && fail "pwd accepted an argument"
+
 printf '# path resolves a workspace\n'
 [ "$(wt_run path telos/demo)" = "$work/telos/demo" ] ||
   fail "path returned the wrong directory"

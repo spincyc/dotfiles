@@ -240,6 +240,7 @@ supported.
 ```sh
 wt ls                                   # every workspace and the repos it holds
 wt clone telos/agent-sync spincyc/telos # cloned onto feature/agent-sync
+wt pwd                                  # the workspace holding this directory
 wt branch telos/agent-sync              # the workspace branch
 wt status telos/agent-sync              # branch, cleanliness, ahead/behind
 wt git telos/agent-sync -- log --oneline -3
@@ -251,8 +252,11 @@ wt rm telos/agent-sync                  # refuses uncommitted, unpushed, or stas
 
 A verb reads its first argument as the workspace when that workspace already
 exists, or when the current directory is not inside one; otherwise it acts on
-the workspace you are standing in. `wt` cannot change the calling shell's
-directory, so use `cd "$(wt path telos/agent-sync)"`.
+the workspace you are standing in. `wt pwd` is the exception that never reads
+an argument: it answers *where am I*, printing the root of the workspace the
+current directory belongs to and failing outside `WT_ROOT`. `wt` cannot change
+the calling shell's directory, so use `cd "$(wt path telos/agent-sync)"`, or
+`cd "$(wt pwd)"` to climb back out of a clone.
 
 Concurrent agents are capped. Each launch holds one slot as an open `flock`
 descriptor that survives the exec into the agent, so the kernel releases it

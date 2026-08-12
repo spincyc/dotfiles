@@ -29,6 +29,7 @@ Verbs:
   ls                              List workspaces and the repos they hold
   new [--force] [<workspace>]     Create a workspace, do not launch an agent
   path [<workspace>]              Print a workspace directory
+  pwd                             Print the root of the workspace you are in
   clone [<workspace>] <repo>...   Clone owner/repo or a URL to <owner>/<repo>,
                                   on the workspace branch
   branch [<workspace>]            Print the workspace branch
@@ -45,7 +46,8 @@ A verb reads its first argument as the workspace when that workspace already
 exists, or when the current directory is not inside one. Otherwise the
 current workspace is used and every argument belongs to the verb.
 
-wt never changes the calling shell's directory; use cd "$(wt path NAME)".
+wt never changes the calling shell's directory; use cd "$(wt path NAME)", or
+cd "$(wt pwd)" to return to the top of the workspace you are already in.
 
 Environment:
   WT_ROOT            Workspace root           (default ~/git/worktrees)
@@ -135,6 +137,21 @@ def cmd_path(config: Config, args: list[str]) -> int:
     workspace, rest = workspaces.resolve(config, args)
     if rest:
         raise UsageError("path takes only a workspace")
+    print(workspace.require())
+    return 0
+
+
+def cmd_pwd(config: Config, args: list[str]) -> int:
+    """Answer "where am I" without naming anything.
+
+    Unlike `path`, this never reads an argument as a workspace, so it stays
+    usable from a deep subdirectory of a clone.
+    """
+    if args:
+        raise UsageError("pwd takes no arguments")
+    workspace = workspaces.current(config)
+    if workspace is None:
+        raise WtError(f"not inside a workspace under {config.root}")
     print(workspace.require())
     return 0
 
@@ -308,6 +325,7 @@ VERBS = {
     "list": cmd_ls,
     "new": cmd_new,
     "path": cmd_path,
+    "pwd": cmd_pwd,
     "branch": cmd_branch,
     "clone": cmd_clone,
     "git": cmd_git,
