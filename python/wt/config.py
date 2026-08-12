@@ -12,6 +12,10 @@ from pathlib import Path
 DEFAULT_BRANCH_PREFIX = "feature"
 DEFAULT_AGENT = "claude"
 DEFAULT_MAX_AGENTS = 4
+# A slot costs a lock file and a probe, so the limit is a small number by
+# nature. Bounding it keeps one fat-fingered digit from turning every
+# destructive verb into an unbounded walk.
+MAX_AGENTS_CEILING = 1024
 DEFAULT_FORGE = "https://github.com"
 KNOWN_AGENTS = ("claude", "codex")
 
@@ -51,7 +55,7 @@ class Config:
             max_agents = int(raw_max)
         except ValueError:
             max_agents = 0
-        if max_agents < 0:
+        if max_agents < 0 or max_agents > MAX_AGENTS_CEILING:
             max_agents = 0
 
         return cls(

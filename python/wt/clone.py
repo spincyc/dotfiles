@@ -94,25 +94,38 @@ def into(
     """
     target = workspace_dir / spec.owner / spec.repo
     if (target / ".git").exists():
+        # Same name, possibly a different repository: saying "ok" about a
+        # clone that came from somewhere else tells the caller they have
+        # what they asked for when they do not.
+        here = gitcmd.value(target, "remote", "get-url", "origin")
+        wanted = spec.clone_url(forge)
+        if here is not None and here != wanted and spec.url is not None:
+            raise WtError(
+                f"{spec.name} is already here, from {here}, not {wanted}"
+            )
         return False
     if target.exists():
         raise WtError(
             f"clone target exists and is not a repository: {target}"
         )
 
+    owner_made = not target.parent.exists()
     target.parent.mkdir(parents=True, exist_ok=True)
     if spec.url is None and shutil.which("gh"):
-        # gh is not git, so it is the one command here that wt runs itself.
         command = ["gh", "repo", "clone", spec.name, str(target)]
-        status = subprocess.run(command, check=False).returncode
+        failed = subprocess.run(command, check=False).returncode != 0
     else:
-        # Through gitcmd so the configured git and its pinned locale apply
-        # to the clone as they do to every other command wt runs.
-        status = gitcmd.run(
+        failed = gitcmd.run(
             ["clone", "--", spec.clone_url(forge), str(target)]
-        )
-
-    if status != 0:
+        ) != 0
+    if failed:
+        if owner_made:
+            # An empty owner directory is a stray, and a stray pins the
+            # workspace against `wt sweep` and `wt rm` for good.
+            try:
+                target.parent.rmdir()
+            except OSError:
+                pass
         raise WtError(f"clone failed: {spec.name}")
     if not branches.checkout(target, branch):
         raise WtError(

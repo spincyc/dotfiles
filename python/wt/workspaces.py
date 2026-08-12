@@ -16,13 +16,19 @@ from pathlib import Path
 
 from . import branches, guidance, names, repos, scratch, slots
 from .config import Config
-from .errors import RemovalRefused, UnsavedWorkError, WtError
+from .errors import (
+    PartlyRemoved,
+    RemovalRefused,
+    UnsavedWorkError,
+    WtError,
+)
 
 # What `tidy` reports about each path it considered.
 REMOVED = "removed"
 TRACKED = "tracked"
 SKIPPED = "skipped"
 NESTED = "nested"
+FAILED = "failed"
 
 Step = tuple[str, str]
 OnStep = Callable[[str, str], None]
@@ -241,36 +247,48 @@ class Workspace:
                 record(REMOVED, scratch.NAME)
 
         for name in self.repo_names():
-            repo = target / name
-            # discover follows symlinks, and git would happily clean a
-            # repository the workspace only points at. Both sides of this
-            # comparison are resolved; comparing a resolved child against an
-            # unresolved parent called every clone a symlink whenever any
-            # directory above the root was one.
-            if repo.is_symlink() or repo.resolve() != target / name:
-                record(SKIPPED, name)
-                continue
-            if not dry_run:
-                # A clone made by hand never got the exclusion; give it one
-                # before its scratch directory can dirty the repository.
-                scratch.ensure_exclude(repo, root=target)
-            if scratch.present(repo):
-                nested = scratch.repositories_under(repo / scratch.NAME)
-                if scratch.tracked(repo):
-                    record(TRACKED, f"{name}/{scratch.NAME}")
-                elif nested:
-                    # A checkout under .scratch is work no clone reports and
-                    # git clean would never have taken.
-                    record(NESTED, f"{name}/{scratch.NAME}")
-                else:
-                    if not dry_run:
-                        scratch.remove(repo / scratch.NAME)
-                    record(REMOVED, f"{name}/{scratch.NAME}")
-            # Streamed, so a clean that dies partway still accounts for the
-            # paths it had already taken.
-            for path in scratch.clean_ignored(repo, dry_run):
-                record(REMOVED, f"{name}/{path}")
+            try:
+                self._tidy_repo(target, name, dry_run, record)
+            except (WtError, OSError) as error:
+                # One clone that cannot be tidied is that clone's problem.
+                # Abandoning its siblings left the rest of the workspace
+                # dirty for a reason nothing had reported against them.
+                record(FAILED, f"{name}: {error}")
         return steps
+
+    def _tidy_repo(
+        self, target: Path, name: str, dry_run: bool, record: OnStep
+    ) -> None:
+        """Tidy one clone, raising only about that clone."""
+        repo = target / name
+        # discover follows symlinks, and git would happily clean a
+        # repository the workspace only points at. Both sides of this
+        # comparison are resolved; comparing a resolved child against an
+        # unresolved parent called every clone a symlink whenever any
+        # directory above the root was one.
+        if repo.is_symlink() or repo.resolve() != target / name:
+            record(SKIPPED, name)
+            return
+        if not dry_run:
+            # A clone made by hand never got the exclusion; give it one
+            # before its scratch directory can dirty the repository.
+            scratch.ensure_exclude(repo, root=target)
+        if scratch.present(repo):
+            nested = scratch.repositories_under(repo / scratch.NAME)
+            if scratch.tracked(repo):
+                record(TRACKED, f"{name}/{scratch.NAME}")
+            elif nested:
+                # A checkout under .scratch is work no clone reports and
+                # git clean would never have taken.
+                record(NESTED, f"{name}/{scratch.NAME}")
+            else:
+                if not dry_run:
+                    scratch.remove(repo / scratch.NAME)
+                record(REMOVED, f"{name}/{scratch.NAME}")
+        # Streamed, so a clean that dies partway still accounts for the
+        # paths it had already taken.
+        for path in scratch.clean_ignored(repo, dry_run):
+            record(REMOVED, f"{name}/{path}")
 
     def remove(
         self,
@@ -307,11 +325,7 @@ class Workspace:
 
         shutil.rmtree(resolved, onexc=note)
         if refused:
-            raise WtError(
-                f"partly removed {self.name}: {len(refused)} paths could "
-                f"not be deleted, starting at {refused[0]}; what remains is "
-                f"an incomplete tree, not the workspace you had"
-            )
+            raise PartlyRemoved(self.name, refused)
         return resolved
 
 

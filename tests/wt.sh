@@ -941,6 +941,43 @@ assert_contains "$(wt_run rm naming/a..b)" 'removed'
 # A slug git accepts under the prefix is not refused for standing alone.
 wt_run new naming/HEAD >/dev/null || fail "feature/HEAD is a legal branch"
 
+printf '# one clone that cannot be tidied does not abandon its siblings\n'
+wt_root="$test_root/tidyfail"
+wt_run clone -w tf/work "file://$origins/spincyc/alpha" \
+  "file://$origins/spincyc/beta" >/dev/null 2>&1 ||
+  fail "clone into the tidyfail workspace failed"
+tf_alpha="$wt_root/tf/work/spincyc/alpha"
+tf_beta="$wt_root/tf/work/spincyc/beta"
+mkdir -p "$tf_alpha/.scratch/cache/ro"
+printf 'x\n' >"$tf_alpha/.scratch/cache/ro/f"
+mkdir -p "$tf_beta/.scratch"
+printf 'b\n' >"$tf_beta/.scratch/b.md"
+chmod 555 "$tf_alpha/.scratch/cache/ro" "$tf_alpha/.scratch/cache"
+tf_out=$(wt_run tidy tf/work 2>&1) && fail "tidy reported success on a failure"
+assert_contains "$tf_out" 'failed'
+# The sibling is the point: its .scratch must be gone even though alpha blew up.
+[ ! -e "$tf_beta/.scratch" ] ||
+  fail "one unreadable clone abandoned its siblings"
+chmod -R 755 "$tf_alpha/.scratch" 2>/dev/null || true
+wt_root="$work"
+
+printf '# a failed clone leaves nothing that pins the workspace\n'
+wt_root="$test_root/failedclone"
+if wt_run clone -w fc/work "file://$origins/spincyc/nosuch" >/dev/null 2>&1; then
+  fail "a clone from a missing origin reported success"
+fi
+[ ! -d "$wt_root/fc/work/spincyc" ] ||
+  fail "a failed clone left an owner directory behind"
+assert_contains "$(wt_run sweep -n fc/work)" 'would rm fc/work'
+wt_root="$work"
+
+printf '# a misspelled verb is not a workspace name\n'
+if verb_out=$(wt_run satus 2>&1); then
+  fail "a misspelled verb was accepted"
+fi
+assert_contains "$verb_out" 'did you mean status'
+assert_status 2 wt_run satus
+
 printf '# tidy names a repository under .scratch instead of taking it\n'
 wt_root="$test_root/nested"
 wt_run clone -w nested/work "file://$origins/spincyc/alpha" >/dev/null 2>&1 ||

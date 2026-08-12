@@ -15,6 +15,7 @@ from pathlib import Path
 from . import checks, clone, gitcmd, repos, slots, workspaces
 from .config import KNOWN_AGENTS, Config
 from .errors import (
+    PartlyRemoved,
     RemovalRefused,
     UnsavedWorkError,
     UsageError,
@@ -101,7 +102,7 @@ Exported into the agent:
 
 REPO_LINE = "{name:<34} {branch:<22} {state:<7} {upstream:<26} {tracking}"
 LABELS = {checks.Level.OK: "ok", checks.Level.WARN: "warn",
-          checks.Level.FAIL: "MISSING"}
+          checks.Level.FAIL: "fail"}
 
 
 def _take_flag(args: list[str], *spellings: str) -> tuple[bool, list[str]]:
@@ -662,6 +663,8 @@ def cmd_tidy(config: Config, args: list[str]) -> int:
         # Reported as each step happens, not from the returned list: a clean
         # that dies partway raises, and the account of what it had already
         # deleted must not die with it.
+        nonlocal_failed: list[str] = []
+
         def report(kind: str, path: str, name: str = workspace.name) -> None:
             nonlocal total
             if kind == workspaces.REMOVED:
@@ -671,6 +674,9 @@ def cmd_tidy(config: Config, args: list[str]) -> int:
                 print(f"{'kept':<9}{name}/{path}  tracked")
             elif kind == workspaces.NESTED:
                 print(f"{'kept':<9}{name}/{path}  holds a repository")
+            elif kind == workspaces.FAILED:
+                nonlocal_failed.append(path)
+                print(f"{'failed':<9}{name}/{path}")
             else:
                 print(f"{'kept':<9}{name}/{path}  a symlink")
 
@@ -678,6 +684,8 @@ def cmd_tidy(config: Config, args: list[str]) -> int:
             workspace.tidy(dry_run=dry_run, on_step=report)
         except (WtError, OSError) as error:
             print(f"wt: {_message(error)}", file=sys.stderr)
+            status = 1
+        if nonlocal_failed:
             status = 1
     noun = "path" if total == 1 else "paths"
     print(f"{total} transient {noun} {'to remove' if dry_run else 'removed'}")
@@ -707,6 +715,7 @@ def cmd_sweep(config: Config, args: list[str]) -> int:
     status = 0
     removed = 0
     kept = 0
+    damaged = 0
     emptied: list[str] = []
     for workspace in targets:
         try:
@@ -724,6 +733,15 @@ def cmd_sweep(config: Config, args: list[str]) -> int:
                 reasons = []
         except RemovalRefused as refusal:
             reasons = refusal.reasons
+        except PartlyRemoved as error:
+            # Neither removed nor kept: counting it as kept would tell a
+            # script the workspace is still there, which is the one thing
+            # it is not.
+            print(f"{'damaged':<9}{workspace.name}  partly removed")
+            print(f"wt: {error.message}", file=sys.stderr)
+            status = 1
+            damaged += 1
+            continue
         except (WtError, OSError) as error:
             print(f"wt: {_message(error)}", file=sys.stderr)
             status = 1
@@ -739,7 +757,10 @@ def cmd_sweep(config: Config, args: list[str]) -> int:
 
     for project in workspaces.prune_projects(config, emptied, dry_run=dry_run):
         print(f"{'pruned':<9}{project}  empty project")
-    print(f"{removed} {'to remove' if dry_run else 'removed'}, {kept} kept")
+    tail = f", {damaged} damaged" if damaged else ""
+    print(
+        f"{removed} {'to remove' if dry_run else 'removed'}, {kept} kept{tail}"
+    )
     return status
 
 
@@ -915,6 +936,11 @@ def dispatch(config: Config, argv: list[str]) -> int:
         return launch(config, command, args)
     if command.startswith("-"):
         raise UsageError(f"unknown option: {command}")
+    close = difflib.get_close_matches(command, VERBS, n=1, cutoff=0.8)
+    if close and "/" not in command:
+        # Otherwise `wt satus demo/x` creates a workspace called `satus` and
+        # runs the agent in it, with the workspace you meant as an argument.
+        raise UsageError(f"unknown verb: {command}; did you mean {close[0]}?")
     return launch(config, config.agent, argv)
 
 

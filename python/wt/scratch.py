@@ -126,7 +126,15 @@ def remove(path: Path) -> None:
         return
     if path.stat().st_uid != os.getuid():
         raise WtError(f"not removing a path owned by someone else: {path}")
-    shutil.rmtree(path)
+    # rmtree takes everything it can before raising, so a refusal partway
+    # through has already deleted things the caller was told nothing about.
+    refused: list[str] = []
+    shutil.rmtree(path, onexc=lambda f, p, e: refused.append(str(p)))
+    if refused:
+        raise WtError(
+            f"{path} was partly removed; {len(refused)} paths remain, "
+            f"starting at {refused[0]}"
+        )
 
 
 def tracked(repo: Path) -> list[str]:

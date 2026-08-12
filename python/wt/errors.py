@@ -21,6 +21,19 @@ class UsageError(WtError):
     exit_code = 2
 
 
+class PartlyRemoved(WtError):
+    """Deletion began and could not finish, so the tree is now neither."""
+
+    def __init__(self, workspace: str, remaining: list[str]) -> None:
+        super().__init__(
+            f"partly removed {workspace}: {len(remaining)} paths could not "
+            f"be deleted, starting at {remaining[0]}; what remains is an "
+            f"incomplete tree, not the workspace you had"
+        )
+        self.workspace = workspace
+        self.remaining = remaining
+
+
 class RemovalRefused(WtError):
     """The gate refused to delete a workspace, and said why.
 
