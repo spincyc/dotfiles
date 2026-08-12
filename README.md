@@ -168,6 +168,16 @@ That host layer specifically selects built-in `eDP-1`, ultrawide `DP-3` at
 `5120x1440@239.76Hz`, and the `tpacpi::kbd_backlight` device. Review it before
 using the profile on different hardware.
 
+It also handles clamshell operation. With the lid shut, Hyprland stops driving
+the built-in panel but leaves `eDP-1` enabled at a `0x0` mode positioned at
+`0,0`, on top of `DP-3`'s origin. Clients see a zero-size output covering the
+ultrawide's corner, and Firefox constrains its menu popups to that empty
+rectangle, so dropdown menus stop rendering entirely. The host monitor variant
+therefore disables `eDP-1` outright while the lid is closed and restores it on
+open, reconciling on startup and monitor hotplug as well as on the lid
+transition, and never disabling the panel while it is the only monitor left.
+This adds two `Lid Switch` binds and reads `/proc/acpi/button/lid/*/state`.
+
 `config.dotinst` still identifies the profile, its upstream, and its subfolder,
 and the gate checks all three; only its version field goes stale. Each layer's
 `profile.conf` records the release it was derived from as provenance rather than
