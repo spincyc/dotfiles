@@ -941,6 +941,26 @@ assert_contains "$(wt_run rm naming/a..b)" 'removed'
 # A slug git accepts under the prefix is not refused for standing alone.
 wt_run new naming/HEAD >/dev/null || fail "feature/HEAD is a legal branch"
 
+printf '# tidy names a repository under .scratch instead of taking it\n'
+wt_root="$test_root/nested"
+wt_run clone -w nested/work "file://$origins/spincyc/alpha" >/dev/null 2>&1 ||
+  fail "clone into the nested workspace failed"
+nested_repo="$wt_root/nested/work/spincyc/alpha"
+mkdir -p "$nested_repo/.scratch/experiment"
+git init --quiet -- "$nested_repo/.scratch/experiment"
+printf 'valuable\n' >"$nested_repo/.scratch/experiment/notes.md"
+git -C "$nested_repo/.scratch/experiment" add notes.md
+git -C "$nested_repo/.scratch/experiment" commit --quiet -m 'an experiment'
+nested_dry=$(wt_run tidy -n nested/work)
+nested_real=$(wt_run tidy nested/work)
+# git clean refuses to recurse into a repository; rmtree would not, so the
+# dry run has to promise exactly what the real run does.
+assert_contains "$nested_dry" 'holds a repository'
+assert_contains "$nested_real" 'holds a repository'
+[ -f "$nested_repo/.scratch/experiment/notes.md" ] ||
+  fail "tidy destroyed a repository under .scratch"
+wt_root="$work"
+
 printf '# sync fetches and rebases onto the default branch\n'
 make_origin spincyc/delta
 wt_root="$test_root/sync"

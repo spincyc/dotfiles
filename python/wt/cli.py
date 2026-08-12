@@ -669,6 +669,8 @@ def cmd_tidy(config: Config, args: list[str]) -> int:
                 print(f"{word:<9}{name}/{path}")
             elif kind == workspaces.TRACKED:
                 print(f"{'kept':<9}{name}/{path}  tracked")
+            elif kind == workspaces.NESTED:
+                print(f"{'kept':<9}{name}/{path}  holds a repository")
             else:
                 print(f"{'kept':<9}{name}/{path}  a symlink")
 

@@ -104,6 +104,21 @@ def present(parent: Path) -> bool:
     return candidate.is_symlink() or candidate.exists()
 
 
+def repositories_under(path: Path) -> list[str]:
+    """Every repository below path, relative to it, sorted.
+
+    `git clean` refuses to recurse into a nested repository without -ff, and
+    `shutil.rmtree` has no such scruple. A `.scratch` that grew a checkout
+    is the one place the two disagree, and the dry run must name what the
+    real run would take.
+    """
+    if path.is_symlink() or not path.is_dir():
+        return []
+    return sorted(
+        {str(git.parent.relative_to(path)) for git in path.rglob(".git")}
+    )
+
+
 def remove(path: Path) -> None:
     """Delete one transient path without following it out of the workspace."""
     if path.is_symlink() or not path.is_dir():

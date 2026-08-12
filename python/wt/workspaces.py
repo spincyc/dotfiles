@@ -1,8 +1,9 @@
 """Workspace creation, listing, resolution, and disposal.
 
-One rule shapes this module: every path that deletes something goes through
-`Workspace.blockers`, and nothing deletes anything the gate has not just
-answered for. `wt rm` and `wt sweep` used to ask different questions — rm
+One rule shapes this module: every path that removes a *workspace* goes
+through `Workspace.blockers`, and nothing removes one the gate has not just
+answered for. `tidy` is deliberately outside it — it deletes only what the
+clones themselves call disposable, and never the workspace. `wt rm` and `wt sweep` used to ask different questions — rm
 checked two conditions, the sweep checked five, and the sweep asked them up
 to a whole sweep before it acted — so the two disagreed about what was
 disposable and the sweep acted on facts that had since changed.
@@ -21,6 +22,7 @@ from .errors import RemovalRefused, UnsavedWorkError, WtError
 REMOVED = "removed"
 TRACKED = "tracked"
 SKIPPED = "skipped"
+NESTED = "nested"
 
 Step = tuple[str, str]
 OnStep = Callable[[str, str], None]
@@ -170,7 +172,12 @@ class Workspace:
         reasons: list[str] = []
 
         target = self.path.resolve() if self.exists() else self.path
-        current = (cwd or Path.cwd()).resolve()
+        try:
+            current = (cwd or Path.cwd()).resolve()
+        except OSError:
+            # A shell left in a directory something else removed is nowhere,
+            # which is not the same as being somewhere safe.
+            current = target
         if current == target or target in current.parents:
             reasons.append("the current directory")
         elif here is not None and here.name == self.name:
@@ -225,9 +232,13 @@ class Workspace:
         target = self.checked_target()
 
         if scratch.present(target):
-            if not dry_run:
-                scratch.remove(target / scratch.NAME)
-            record(REMOVED, scratch.NAME)
+            nested = scratch.repositories_under(target / scratch.NAME)
+            if nested:
+                record(NESTED, f"{scratch.NAME}")
+            else:
+                if not dry_run:
+                    scratch.remove(target / scratch.NAME)
+                record(REMOVED, scratch.NAME)
 
         for name in self.repo_names():
             repo = target / name
@@ -244,8 +255,13 @@ class Workspace:
                 # before its scratch directory can dirty the repository.
                 scratch.ensure_exclude(repo, root=target)
             if scratch.present(repo):
+                nested = scratch.repositories_under(repo / scratch.NAME)
                 if scratch.tracked(repo):
                     record(TRACKED, f"{name}/{scratch.NAME}")
+                elif nested:
+                    # A checkout under .scratch is work no clone reports and
+                    # git clean would never have taken.
+                    record(NESTED, f"{name}/{scratch.NAME}")
                 else:
                     if not dry_run:
                         scratch.remove(repo / scratch.NAME)

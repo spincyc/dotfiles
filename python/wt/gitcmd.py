@@ -23,12 +23,19 @@ def available() -> bool:
 
 
 def _parsed_env() -> dict[str, str]:
-    """Everything `read` returns is parsed, so pin git's messages to C.
+    """The environment every git in this package runs under.
 
-    Under a translated locale a caller matching on git's own wording — as
-    the `git clean` reader does — silently sees nothing at all.
+    Two hazards, both of which make git answer about something other than
+    the repository it was handed. Under a translated locale a caller
+    matching on git's own wording — as the `git clean` reader does —
+    silently sees nothing at all. And an inherited GIT_DIR or GIT_WORK_TREE,
+    as set inside a hook or a `git rebase --exec`, overrides `-C` entirely,
+    so wt would inspect and clean whatever repository invoked it.
     """
-    return {**os.environ, "LC_ALL": "C", "LANGUAGE": ""}
+    environment = {**os.environ, "LC_ALL": "C", "LANGUAGE": ""}
+    for inherited in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+        environment.pop(inherited, None)
+    return environment
 
 
 def read(repo: Path, *args: str) -> tuple[int, str]:
