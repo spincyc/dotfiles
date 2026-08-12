@@ -5,6 +5,14 @@ purposes with `aiq capability list` and load a selected contract with
 `aiq capability show <id>`; the contracts, not this document, define exact
 invocation shapes.
 
+This document does not apply in a `wt` agent workspace, which `WT_WORKSPACE`
+identifies. Such a workspace is disposable and deliberately keeps no ledger:
+do not ingest, claim, enqueue, settle, or initialize a journal there, and
+treat the absence of work state as intended rather than as a defect to
+repair. `wt` exports `AIQ_DISABLE`, so installed hooks are already inert;
+never work around it. Committed work still belongs in the repository being
+changed, under that repository's own instructions.
+
 - Persist each user message before affected work. Check first — inbox
   listings are content-free, so checking exposes nothing — and skip manual
   capture when the message is already present or a verified host integration

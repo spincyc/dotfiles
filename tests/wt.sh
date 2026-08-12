@@ -84,8 +84,9 @@ mkdir -p -- "$origins" "$state" "$fake_bin"
 # A stand-in agent that records where it was launched and what it received.
 cat >"$fake_bin/fake-agent" <<'EOF'
 #!/bin/sh
-printf 'agent cwd=%s slot=%s workspace=%s args=%s\n' "$(pwd -P)" \
-  "${WT_AGENT_SLOT:-}" "${WT_WORKSPACE:-}" "$*"
+printf 'agent cwd=%s slot=%s workspace=%s aiq_disable=%s args=%s\n' \
+  "$(pwd -P)" "${WT_AGENT_SLOT:-}" "${WT_WORKSPACE:-}" \
+  "${AIQ_DISABLE:-unset}" "$*"
 EOF
 chmod 755 -- "$fake_bin/fake-agent"
 
@@ -121,6 +122,8 @@ assert_contains "$(cat "$work/feature/demo/AGENTS.md")" \
   'wt clone feature/demo spincyc/telos'
 assert_contains "$(cat "$work/feature/demo/AGENTS.md")" \
   'Every repository lives at `<owner>/<repo>`'
+assert_contains "$(cat "$work/feature/demo/AGENTS.md")" 'Do not use `aiq`'
+assert_contains "$(cat "$work/feature/demo/AGENTS.md")" 'AIQ_DISABLE'
 
 printf '# bare names take the namespace prefix\n'
 wt_run new bare >/dev/null 2>&1
@@ -217,6 +220,9 @@ assert_contains "$launch_out" "cwd=$work/feature/demo"
 assert_contains "$launch_out" 'workspace=feature/demo'
 assert_contains "$launch_out" 'args=--flag value'
 assert_contains "$launch_out" 'slot=1'
+
+printf '# the launched agent keeps no work ledger\n'
+assert_contains "$launch_out" 'aiq_disable=1'
 
 printf '# slots are released when the agent exits\n'
 agents_out=$(wt_run agents)

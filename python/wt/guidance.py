@@ -46,6 +46,17 @@ Rules:
   it once no repository holds uncommitted, unpushed, or stashed work, so
   leave nothing here that is not committed and pushed.
 
+## No work ledger here
+
+This workspace keeps no local work state. Do not use `aiq` in it: no
+ingesting, claiming, enqueuing, settling, or journal initialization, and no
+treating the absence of work state as a defect. Do not use `tmt` here either:
+record no candidates and scaffold no registry. `wt` exports `AIQ_DISABLE`, so
+the installed hooks are already inert; never work around that.
+
+A cloned repository inside this workspace keeps its own contracts. If it has
+a `tmt.json`, tool making applies to that repository normally.
+
 ## Which instructions govern a change
 
 The active repository is whichever clone you are changing. That repository's

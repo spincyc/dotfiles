@@ -207,6 +207,23 @@ Creating a workspace writes `AGENTS.md` there, with `CLAUDE.md` and
 directory owner-prefixed. The files are written once; `wt new --force`
 rewrites them after the template changes.
 
+A workspace keeps no work ledger. `wt` exports `AIQ_DISABLE=1` into the agent,
+which switches the installed AIQ hooks off for that session, and the workspace
+guidance plus [`ai-guidance/10-journal.md`](ai-guidance/10-journal.md) and
+[`15-tool-making.md`](ai-guidance/15-tool-making.md) tell the agent not to use
+`aiq` or `tmt` there. Both halves are needed: the environment variable stops
+prompt capture and the completion gate, and the guidance stops the agent
+looking for work state that is deliberately absent. Without the variable a
+workspace root, not being a Git repository, would fall back to AIQ's user
+scope and capture every prompt.
+
+`AIQ_DISABLE` needs an AIQ newer than `0.3.0a1`, currently only from source. An
+older AIQ ignores the variable and keeps capturing, so until the installed AIQ
+is refreshed the guidance half works and the mechanical half does not. Check
+with `aiq --version`, and see the AIQ changelog before upgrading across a
+release: `aiq doctor` reports the switch on its `capture` line once it is
+supported.
+
 ```sh
 wt ls                                   # every workspace and the repos it holds
 wt clone feature/telos-sync spincyc/telos

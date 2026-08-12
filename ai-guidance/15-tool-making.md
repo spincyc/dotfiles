@@ -3,6 +3,11 @@
 Use `tmt` when it is available (Availability, `AI_GUIDANCE.md`). Listed tools
 run as `tools/<id>` without tmt.
 
+This document does not apply in a `wt` agent workspace, which `WT_WORKSPACE`
+identifies: record no candidates and scaffold no registry there. A cloned
+repository inside a workspace keeps its own `tmt.json` contract when it has
+one, and work on that repository follows this document normally.
+
 - Before writing any script, read the repository's `tmt.json` if present and
   prefer a listed tool over re-deriving. Session-start `tmt context` output
   counts as a current read until the repository changes or you alter the

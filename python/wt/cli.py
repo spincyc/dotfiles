@@ -270,6 +270,10 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
     os.environ["WT_WORKSPACE"] = workspace.name
     os.environ["WT_WORKSPACE_DIR"] = str(workspace.path)
     os.environ["WT_AGENT_SLOT"] = str(slot)
+    # A workspace keeps no work ledger. The workspace root is not a
+    # repository, so aiq would otherwise fall back to user scope and capture
+    # every prompt of a session that is meant to be disposable.
+    os.environ["AIQ_DISABLE"] = "1"
     os.chdir(workspace.path)
     print(
         f"wt: {agent} in {workspace.path} (slot {slot} of {config.max_agents})",
