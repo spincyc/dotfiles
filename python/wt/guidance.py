@@ -17,12 +17,29 @@ directory.
 """
 
 
-def render(workspace: str) -> str:
+def render(workspace: str, branch: str) -> str:
     """The AGENTS.md text for one workspace."""
     return f"""# Workspace {workspace}
 
 This directory is a `wt` agent workspace, not a repository. It holds the
-clones one line of work needs, side by side.
+clones one line of work needs, side by side. Its name is
+`<project>/<slug>`: the project it belongs to, and the slug of this one line
+of work.
+
+## Commit to `{branch}`, in every repository
+
+Every clone here works on `{branch}`, the workspace branch. `wt clone` puts
+each new clone on it, and it tracks the branch the clone arrived on until
+you publish it.
+
+- Never commit to `main`, `master`, or any other default branch here, and do
+  not rename or switch the workspace branch.
+- Publish with `git push -u origin {branch}`. A bare `git push` deliberately
+  refuses while the branch still tracks the default branch; that refusal is
+  the guard against pushing this work to `main`.
+- A clone that was already here keeps the branch it is on. `wt status` shows
+  every branch, and `wt check` warns about a repository that has left
+  `{branch}`.
 
 ## Always clone into this directory, owner-prefixed
 
@@ -34,6 +51,7 @@ Every repository lives at `<owner>/<repo>` below this directory, for example
 or, from this directory:
 
     mkdir -p spincyc && git clone <url> spincyc/telos
+    git -C spincyc/telos checkout -b {branch}
 
 Rules:
 
@@ -71,17 +89,19 @@ layout rules above; it never overrides repository or personal guidance.
 """
 
 
-def documents(workspace: str) -> dict[str, str]:
+def documents(workspace: str, branch: str) -> dict[str, str]:
     """Every guidance file a workspace gets, keyed by filename."""
-    files = {CANONICAL: render(workspace)}
+    files = {CANONICAL: render(workspace, branch)}
     files.update({name: _POINTER for name in POINTERS})
     return files
 
 
-def write(directory: Path, workspace: str, force: bool = False) -> bool:
+def write(
+    directory: Path, workspace: str, branch: str, force: bool = False
+) -> bool:
     """Write the guidance unless it is already there. True when written."""
     if (directory / CANONICAL).exists() and not force:
         return False
-    for name, text in documents(workspace).items():
+    for name, text in documents(workspace, branch).items():
         (directory / name).write_text(text, encoding="utf-8")
     return True

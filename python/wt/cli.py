@@ -13,20 +13,25 @@ from .config import KNOWN_AGENTS, Config
 from .errors import UnsavedWorkError, UsageError, WtError
 
 USAGE = """\
-Usage: wt [claude|codex] [<namespace>/]<name> [agent-args...]
+Usage: wt [claude|codex] [<project>/]<slug> [agent-args...]
        wt <verb> [<workspace>] [args...]
 
 Launch:
-  wt claude feature/telos-sync    Create or reuse the workspace, then run
-  wt codex feature/telos-sync     the agent with it as the working directory
-  wt feature/telos-sync           Use $WT_AGENT (default claude)
-  wt telos-sync                   Bare names take the $WT_NAMESPACE prefix
+  wt claude telos/agent-sync      Create or reuse the workspace, then run
+  wt codex telos/agent-sync       the agent with it as the working directory
+  wt telos/agent-sync             Use $WT_AGENT (default claude)
+  wt agent-sync                   A bare slug takes $WT_PROJECT
+
+A workspace is <project>/<slug>, and every repository cloned into it works on
+the branch feature/<slug> ($WT_BRANCH_PREFIX/<slug>).
 
 Verbs:
   ls                              List workspaces and the repos they hold
   new [--force] [<workspace>]     Create a workspace, do not launch an agent
   path [<workspace>]              Print a workspace directory
-  clone [<workspace>] <repo>...   Clone owner/repo or a URL to <owner>/<repo>
+  clone [<workspace>] <repo>...   Clone owner/repo or a URL to <owner>/<repo>,
+                                  on the workspace branch
+  branch [<workspace>]            Print the workspace branch
   git [<workspace>] [--] <args>   Run git in every repo of the workspace
   status [<workspace>]            Per-repo branch, cleanliness and tracking
   fetch [<workspace>]             git fetch --prune in every repo
@@ -43,11 +48,12 @@ current workspace is used and every argument belongs to the verb.
 wt never changes the calling shell's directory; use cd "$(wt path NAME)".
 
 Environment:
-  WT_ROOT         Workspace root          (default ~/git/worktrees)
-  WT_NAMESPACE    Prefix for bare names   (default feature)
-  WT_AGENT        Agent for bare launches (default claude)
-  WT_MAX_AGENTS   Concurrent agent slots  (default 4)
-  WT_FORGE        Base URL for owner/repo (default https://github.com)\
+  WT_ROOT            Workspace root           (default ~/git/worktrees)
+  WT_PROJECT         Project for a bare slug  (no default)
+  WT_BRANCH_PREFIX   Workspace branch prefix  (default feature)
+  WT_AGENT           Agent for bare launches  (default claude)
+  WT_MAX_AGENTS      Concurrent agent slots   (default 4)
+  WT_FORGE           Base URL for owner/repo  (default https://github.com)\
 """
 
 REPO_LINE = "{name:<34} {branch:<22} {state:<5} {tracking}"
@@ -117,7 +123,10 @@ def cmd_new(config: Config, args: list[str]) -> int:
         if workspace is None:
             raise WtError(f"new needs a workspace name outside {config.root}")
     if workspace.create(force_guidance=force):
-        print(f"created  {workspace.path}", file=sys.stderr)
+        print(
+            f"created  {workspace.path}  branch {workspace.branch}",
+            file=sys.stderr,
+        )
     print(workspace.path)
     return 0
 
@@ -130,6 +139,14 @@ def cmd_path(config: Config, args: list[str]) -> int:
     return 0
 
 
+def cmd_branch(config: Config, args: list[str]) -> int:
+    workspace, rest = workspaces.resolve(config, args)
+    if rest:
+        raise UsageError("branch takes only a workspace")
+    print(workspace.branch)
+    return 0
+
+
 def cmd_clone(config: Config, args: list[str]) -> int:
     workspace, rest = workspaces.resolve(config, args)
     if not rest:
@@ -138,8 +155,8 @@ def cmd_clone(config: Config, args: list[str]) -> int:
     if workspace.create():
         print(f"created  {workspace.path}", file=sys.stderr)
     for spec in specs:
-        if clone.into(workspace.path, spec, config.forge):
-            print(f"cloned   {spec.name}")
+        if clone.into(workspace.path, spec, config.forge, workspace.branch):
+            print(f"cloned   {spec.name}  on {workspace.branch}")
         else:
             print(f"ok       {spec.name}")
     return 0
@@ -269,6 +286,7 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
 
     os.environ["WT_WORKSPACE"] = workspace.name
     os.environ["WT_WORKSPACE_DIR"] = str(workspace.path)
+    os.environ["WT_BRANCH"] = workspace.branch
     os.environ["WT_AGENT_SLOT"] = str(slot)
     # A workspace keeps no work ledger. The workspace root is not a
     # repository, so aiq would otherwise fall back to user scope and capture
@@ -276,7 +294,8 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
     os.environ["AIQ_DISABLE"] = "1"
     os.chdir(workspace.path)
     print(
-        f"wt: {agent} in {workspace.path} (slot {slot} of {config.max_agents})",
+        f"wt: {agent} in {workspace.path} on {workspace.branch} "
+        f"(slot {slot} of {config.max_agents})",
         file=sys.stderr,
     )
     sys.stdout.flush()
@@ -289,6 +308,7 @@ VERBS = {
     "list": cmd_ls,
     "new": cmd_new,
     "path": cmd_path,
+    "branch": cmd_branch,
     "clone": cmd_clone,
     "git": cmd_git,
     "status": cmd_status,

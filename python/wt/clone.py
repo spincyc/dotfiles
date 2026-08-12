@@ -1,8 +1,9 @@
 """Clone-spec parsing and cloning.
 
 Whatever form the spec takes, the clone lands at ``<owner>/<repo>`` inside the
-workspace. Bare ``owner/repo`` specs go through gh when it is installed, so
-private repositories work without a separate credential setup.
+workspace, on the workspace branch. Bare ``owner/repo`` specs go through gh
+when it is installed, so private repositories work without a separate
+credential setup.
 """
 
 import shutil
@@ -10,6 +11,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import branches
 from .errors import WtError
 from .names import is_safe_component
 
@@ -55,8 +57,14 @@ def parse(spec: str) -> CloneSpec:
     return CloneSpec(owner=owner, repo=repo, url=url)
 
 
-def into(workspace_dir: Path, spec: CloneSpec, forge: str) -> bool:
-    """Clone spec into the workspace. False when it was already there."""
+def into(
+    workspace_dir: Path, spec: CloneSpec, forge: str, branch: str
+) -> bool:
+    """Clone spec into the workspace. False when it was already there.
+
+    An existing clone keeps whatever branch it is on; moving a checkout
+    someone may be working in is not this command's business.
+    """
     target = workspace_dir / spec.owner / spec.repo
     if (target / ".git").exists():
         return False
@@ -73,4 +81,8 @@ def into(workspace_dir: Path, spec: CloneSpec, forge: str) -> bool:
 
     if subprocess.run(command, check=False).returncode != 0:
         raise WtError(f"clone failed: {spec.name}")
+    if not branches.checkout(target, branch):
+        raise WtError(
+            f"cloned {spec.name}, but it would not go on branch {branch}"
+        )
     return True

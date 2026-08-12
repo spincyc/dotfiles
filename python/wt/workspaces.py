@@ -4,14 +4,14 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import guidance, names, repos
+from . import branches, guidance, names, repos
 from .config import Config
 from .errors import UnsavedWorkError, WtError
 
 
 @dataclass(frozen=True)
 class Workspace:
-    """One ``<namespace>/<name>`` directory below the workspace root."""
+    """One ``<project>/<slug>`` directory below the workspace root."""
 
     name: str
     config: Config
@@ -21,12 +21,17 @@ class Workspace:
         return self.config.root / self.name
 
     @property
-    def namespace(self) -> str:
+    def project(self) -> str:
         return names.split_workspace(self.name)[0]
 
     @property
-    def leaf(self) -> str:
+    def slug(self) -> str:
         return names.split_workspace(self.name)[1]
+
+    @property
+    def branch(self) -> str:
+        """The branch every clone in this workspace commits to."""
+        return branches.name(self.config.branch_prefix, self.slug)
 
     def exists(self) -> bool:
         return self.path.is_dir()
@@ -42,10 +47,10 @@ class Workspace:
         Returns True when the directory itself was created.
         """
         _ensure_directory(self.config.root)
-        _ensure_directory(self.config.root / self.namespace)
+        _ensure_directory(self.config.root / self.project)
         created = not self.path.exists()
         _ensure_directory(self.path)
-        guidance.write(self.path, self.name, force=force_guidance)
+        guidance.write(self.path, self.name, self.branch, force=force_guidance)
         return created
 
     def repo_names(self) -> list[str]:
@@ -100,24 +105,24 @@ def _ensure_directory(path: Path) -> None:
 
 def named(config: Config, value: str) -> Workspace:
     """Build a Workspace from a user-supplied name."""
-    return Workspace(names.normalize_workspace(value, config.namespace), config)
+    return Workspace(names.normalize_workspace(value, config.project), config)
 
 
 def listing(config: Config) -> list[Workspace]:
-    """Every existing workspace, in namespace then name order."""
+    """Every existing workspace, in project then slug order."""
     root = config.root
     if not root.is_dir():
         return []
     found: list[Workspace] = []
-    for namespace in sorted(
+    for project in sorted(
         entry
         for entry in root.iterdir()
         if entry.is_dir() and not entry.name.startswith(".")
     ):
-        for leaf in sorted(
-            entry for entry in namespace.iterdir() if entry.is_dir()
+        for slug in sorted(
+            entry for entry in project.iterdir() if entry.is_dir()
         ):
-            found.append(Workspace(f"{namespace.name}/{leaf.name}", config))
+            found.append(Workspace(f"{project.name}/{slug.name}", config))
     return found
 
 

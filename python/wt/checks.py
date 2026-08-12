@@ -119,6 +119,18 @@ def _layout(config: Config) -> list[CheckResult]:
                         FAIL, f"{workspace.name}/{name} nests a repository"
                     )
                 )
+                continue
+            # A repository that has left the workspace branch is a warning,
+            # not a failure: a rebase or a review checkout is legitimate.
+            on = repos.branch(directory / name)
+            if on != workspace.branch:
+                results.append(
+                    CheckResult(
+                        WARN,
+                        f"{workspace.name}/{name} is on {on}, not "
+                        f"{workspace.branch}",
+                    )
+                )
     plural = "" if len(found) == 1 else "s"
     results.append(CheckResult(OK, f"{len(found)} workspace{plural}"))
     return results

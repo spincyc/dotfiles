@@ -191,21 +191,34 @@ unmanaged, or drifted files.
 ## Agent workspaces: `wt`
 
 `wt` runs an AI agent in a throwaway workspace under `~/git/worktrees`. A
-workspace is a plain directory holding several independent clones, each parked
-at `<owner>/<repo>`. It is not a repository, and it is not a `git worktree` of
-a canonical clone under `~/git`; the clones inside it are independent, so work
-done there never reaches the canonical checkouts.
+workspace is named `<project>/<slug>` — the project the work belongs to and
+the slug of one line of work — and is a plain directory holding several
+independent clones, each parked at `<owner>/<repo>`. It is not a repository,
+and it is not a `git worktree` of a canonical clone under `~/git`; the clones
+inside it are independent, so work done there never reaches the canonical
+checkouts.
 
 ```sh
-wt claude feature/telos-sync    # create or reuse the workspace, run claude in it
-wt codex feature/telos-sync     # the same workspace, a different agent
-wt telos-sync                   # bare names take the feature/ prefix
+wt claude telos/agent-sync      # create or reuse the workspace, run claude in it
+wt codex telos/agent-sync       # the same workspace, a different agent
+wt agent-sync                   # a bare slug takes $WT_PROJECT
 ```
+
+The project only groups workspaces and names nothing on a forge; the
+repositories a workspace holds are still cloned explicitly.
+
+Every clone in a workspace works on one branch, `feature/<slug>`. `wt clone`
+creates it and, until it is published, points it at the branch the clone
+arrived on, so `wt status` and `wt pull` stay meaningful, `wt rm` can still
+tell saved work from unsaved, and a bare `git push` refuses instead of
+sending the work to the default branch. Publishing is therefore explicit:
+`git push -u origin "$(wt branch)"`. `wt check` warns about a repository that
+has left the branch, and `WT_BRANCH_PREFIX` renames the `feature` half.
 
 Creating a workspace writes `AGENTS.md` there, with `CLAUDE.md` and
 `GEMINI.md` deferring to it, so every agent is told to clone into that
-directory owner-prefixed. The files are written once; `wt new --force`
-rewrites them after the template changes.
+directory owner-prefixed and to commit on the workspace branch. The files are
+written once; `wt new --force` rewrites them after the template changes.
 
 A workspace keeps no work ledger. `wt` exports `AIQ_DISABLE=1` into the agent,
 which switches the installed AIQ hooks off for that session, and the workspace
@@ -226,19 +239,20 @@ supported.
 
 ```sh
 wt ls                                   # every workspace and the repos it holds
-wt clone feature/telos-sync spincyc/telos
-wt status feature/telos-sync            # branch, cleanliness, ahead/behind
-wt git feature/telos-sync -- log --oneline -3
-wt fetch feature/telos-sync             # or pull, --ff-only
+wt clone telos/agent-sync spincyc/telos # cloned onto feature/agent-sync
+wt branch telos/agent-sync              # the workspace branch
+wt status telos/agent-sync              # branch, cleanliness, ahead/behind
+wt git telos/agent-sync -- log --oneline -3
+wt fetch telos/agent-sync               # or pull, --ff-only
 wt agents                               # occupied and free agent slots
 wt check                                # environment and layout sanity check
-wt rm feature/telos-sync                # refuses uncommitted, unpushed, or stashed work
+wt rm telos/agent-sync                  # refuses uncommitted, unpushed, or stashed work
 ```
 
 A verb reads its first argument as the workspace when that workspace already
 exists, or when the current directory is not inside one; otherwise it acts on
 the workspace you are standing in. `wt` cannot change the calling shell's
-directory, so use `cd "$(wt path feature/telos-sync)"`.
+directory, so use `cd "$(wt path telos/agent-sync)"`.
 
 Concurrent agents are capped. Each launch holds one slot as an open `flock`
 descriptor that survives the exec into the agent, so the kernel releases it
@@ -248,7 +262,8 @@ up. `wt agents` reports the slots; a launch past the cap is refused.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `WT_ROOT` | `~/git/worktrees` | Workspace root |
-| `WT_NAMESPACE` | `feature` | Prefix applied to bare names |
+| `WT_PROJECT` | none | Project applied to a bare slug |
+| `WT_BRANCH_PREFIX` | `feature` | Prefix of the workspace branch |
 | `WT_AGENT` | `claude` | Agent used when none is named |
 | `WT_MAX_AGENTS` | `4` | Concurrent agent slots |
 | `WT_FORGE` | `https://github.com` | Base URL for `owner/repo` clones |
@@ -272,10 +287,10 @@ for workspace in workspaces.listing(config):
 
 The modules are separated so each is usable alone: `wt.config` settings,
 `wt.names` name and path safety, `wt.gitcmd` a git runner, `wt.repos`
-discovery and status, `wt.clone` clone specs, `wt.guidance` the workspace
-documents, `wt.workspaces` creation and resolution, `wt.slots` the flock
-concurrency limit, `wt.checks` the sanity check, and `wt.cli` the command
-line. Nothing outside `wt.cli` prints.
+discovery and status, `wt.branches` the workspace branch, `wt.clone` clone
+specs, `wt.guidance` the workspace documents, `wt.workspaces` creation and
+resolution, `wt.slots` the flock concurrency limit, `wt.checks` the sanity
+check, and `wt.cli` the command line. Nothing outside `wt.cli` prints.
 
 Run the isolated `wt` suite, which uses temporary roots and local origins and
 never touches `~/git` or the network, with:

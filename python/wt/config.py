@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-DEFAULT_NAMESPACE = "feature"
+DEFAULT_BRANCH_PREFIX = "feature"
 DEFAULT_AGENT = "claude"
 DEFAULT_MAX_AGENTS = 4
 DEFAULT_FORGE = "https://github.com"
@@ -21,7 +21,10 @@ class Config:
     """Where workspaces live and how agents are launched."""
 
     root: Path
-    namespace: str = DEFAULT_NAMESPACE
+    # A bare workspace name needs a project; there is no sensible default one,
+    # so it stays None until WT_PROJECT names it.
+    project: str | None = None
+    branch_prefix: str = DEFAULT_BRANCH_PREFIX
     agent: str = DEFAULT_AGENT
     max_agents: int = DEFAULT_MAX_AGENTS
     forge: str = DEFAULT_FORGE
@@ -49,7 +52,9 @@ class Config:
 
         return cls(
             root=Path(root).expanduser(),
-            namespace=environ.get("WT_NAMESPACE") or DEFAULT_NAMESPACE,
+            project=environ.get("WT_PROJECT") or None,
+            branch_prefix=environ.get("WT_BRANCH_PREFIX")
+            or DEFAULT_BRANCH_PREFIX,
             agent=environ.get("WT_AGENT") or DEFAULT_AGENT,
             max_agents=max_agents,
             forge=environ.get("WT_FORGE") or DEFAULT_FORGE,
