@@ -1,0 +1,76 @@
+"""The per-workspace agent guidance documents.
+
+`AGENTS.md` is what tells an agent that clones belong here, owner-prefixed.
+The Claude and Gemini files defer to it, mirroring the bootstrap pattern the
+dotfiles repository already uses.
+"""
+
+from pathlib import Path
+
+CANONICAL = "AGENTS.md"
+POINTERS = ("CLAUDE.md", "GEMINI.md")
+
+_POINTER = """# Agent instructions
+
+Read and follow [`AGENTS.md`](AGENTS.md), the workspace guidance for this
+directory.
+"""
+
+
+def render(workspace: str) -> str:
+    """The AGENTS.md text for one workspace."""
+    return f"""# Workspace {workspace}
+
+This directory is a `wt` agent workspace, not a repository. It holds the
+clones one line of work needs, side by side.
+
+## Always clone into this directory, owner-prefixed
+
+Every repository lives at `<owner>/<repo>` below this directory, for example
+`spincyc/telos`. Create them with:
+
+    wt clone {workspace} spincyc/telos
+
+or, from this directory:
+
+    mkdir -p spincyc && git clone <url> spincyc/telos
+
+Rules:
+
+- Never clone into the workspace root itself, and never nest a clone inside
+  another clone.
+- Never work in, commit to, or reconfigure the canonical clones under
+  `~/git`. The clones here are independent; changes here do not reach them.
+- Keep unrelated work out of this workspace. One workspace, one line of work.
+- Everything below this directory is disposable. `wt rm {workspace}` deletes
+  it once no repository holds uncommitted, unpushed, or stashed work, so
+  leave nothing here that is not committed and pushed.
+
+## Which instructions govern a change
+
+The active repository is whichever clone you are changing. That repository's
+own instructions govern work inside it. This file only adds the workspace
+layout rules above; it never overrides repository or personal guidance.
+
+## Useful commands
+
+    wt ls                                # workspaces and their repos
+    wt status {workspace}
+    wt git {workspace} -- fetch --prune
+"""
+
+
+def documents(workspace: str) -> dict[str, str]:
+    """Every guidance file a workspace gets, keyed by filename."""
+    files = {CANONICAL: render(workspace)}
+    files.update({name: _POINTER for name in POINTERS})
+    return files
+
+
+def write(directory: Path, workspace: str, force: bool = False) -> bool:
+    """Write the guidance unless it is already there. True when written."""
+    if (directory / CANONICAL).exists() and not force:
+        return False
+    for name, text in documents(workspace).items():
+        (directory / name).write_text(text, encoding="utf-8")
+    return True

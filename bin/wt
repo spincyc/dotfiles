@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""Entry point for wt; the reusable modules live in python/wt.
+
+Resolving this file through its symlink is what lets the installed
+~/.local/bin/wt find the package in the dotfiles checkout, whether or not
+PYTHONPATH carries ~/.local/lib/python.
+"""
+
+import os
+import sys
+
+
+def _package_root() -> str:
+    here = os.path.realpath(__file__)
+    return os.path.join(os.path.dirname(os.path.dirname(here)), "python")
+
+
+def _bootstrap() -> None:
+    root = _package_root()
+    if os.path.isdir(os.path.join(root, "wt")) and root not in sys.path:
+        sys.path.insert(0, root)
+
+
+if __name__ == "__main__":
+    _bootstrap()
+    from wt.cli import main
+
+    sys.exit(main(sys.argv[1:]))

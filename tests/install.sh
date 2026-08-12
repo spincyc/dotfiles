@@ -135,6 +135,8 @@ done <"$profile_dir/manifest"
 for core_target in \
   .zshrc \
   .tmux.conf \
+  .local/bin/wt \
+  .local/lib/python/wt \
   .codex/AGENTS.md \
   .codex/ai-guidance \
   .claude/CLAUDE.md \

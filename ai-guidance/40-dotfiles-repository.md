@@ -10,6 +10,8 @@ opt-in desktop overlays:
   `PATH` in non-interactive shells.
 - `.zshrc`: interactive Zsh; Oh My Zsh is optional.
 - `.tmux.conf`: portable tmux defaults and bindings.
+- `bin/`, `python/`: portable commands and the reusable Python packages behind
+  them, linked to `~/.local/bin` and `~/.local/lib/python`. `wt` lives here.
 - `install.sh`: backs up conflicts, links the portable core, and deploys
   version-gated desktop manifests as regular files.
 - `profiles/`: curated common and semantic host layers for supported desktop
@@ -44,6 +46,9 @@ a hostname.
 - Keep `.zshrc` valid Zsh and `.tmux.conf` valid tmux configuration. Prefer
   feature detection and fallbacks.
 - Use two-space shell indentation and descriptive snake_case names.
+- Keep `python/` on the standard library, and keep each package importable and
+  side-effect free: only its CLI module prints or exits, so the pieces stay
+  reusable from other scripts.
 - When adding a portable core file, update `managed_links` and `README.md`.
 - Keep every desktop destination in a strict manifest. Deploy desktop payloads
   as regular files only after exact profile-version and schema checks; never
@@ -63,11 +68,11 @@ a hostname.
 Run the smallest relevant checks; `make verify` is the authoritative
 repository-wide battery: syntax and tmux checks, temp-home install,
 bootstrap budget, bootstrap-file, cross-reference, index-parity,
-tool-registry (`tmt check`), and journal-artifact checks. `tools/verify
---only CHECK ...` runs named checks; `make verify-guidance` is the
-documentation-only subset (`35-guidance-maintenance.md`). The battery does
-not cover the isolated profile checks — run those separately when profiles
-change:
+tool-registry (`tmt check`), journal-artifact, Python byte-compile, and
+`tests/wt.sh` checks. `tools/verify --only CHECK ...` runs named checks;
+`make verify-guidance` is the documentation-only subset
+(`35-guidance-maintenance.md`). The battery does not cover the isolated
+profile checks — run those separately when profiles change:
 
 ```sh
 sh -n tests/install.sh

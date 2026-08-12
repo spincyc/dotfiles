@@ -172,6 +172,8 @@ managed_links="
 .gitconfig:.gitconfig
 .config/nvim/init.vim:.config/nvim/init.vim
 .config/glow/glow.yml:.config/glow/glow.yml
+bin/wt:.local/bin/wt
+python/wt:.local/lib/python/wt
 AI_GUIDANCE.md:.codex/AGENTS.md
 ai-guidance:.codex/ai-guidance
 AI_GUIDANCE.md:.claude/CLAUDE.md

@@ -4,6 +4,8 @@
 *.swp
 *.swo
 .DS_Store
+__pycache__/
+*.py[cod]
 
 # Claude Code writes project-scoped settings here at runtime: settings.json is
 # session state and settings.local.json holds machine-local permission grants.

@@ -184,9 +184,88 @@ Run the isolated installer regression suite with:
 ```
 
 It covers manifest deployment, idempotence, backups, drift, compatibility
-gates, installer locking, core-parent isolation, and path/link safety. Any
-`--check` command exits nonzero when it reports missing, unmanaged, or drifted
-files.
+gates, installer locking, core-parent isolation, and path/link safety. It
+requires `jq`. Any `--check` command exits nonzero when it reports missing,
+unmanaged, or drifted files.
+
+## Agent workspaces: `wt`
+
+`wt` runs an AI agent in a throwaway workspace under `~/git/worktrees`. A
+workspace is a plain directory holding several independent clones, each parked
+at `<owner>/<repo>`. It is not a repository, and it is not a `git worktree` of
+a canonical clone under `~/git`; the clones inside it are independent, so work
+done there never reaches the canonical checkouts.
+
+```sh
+wt claude feature/telos-sync    # create or reuse the workspace, run claude in it
+wt codex feature/telos-sync     # the same workspace, a different agent
+wt telos-sync                   # bare names take the feature/ prefix
+```
+
+Creating a workspace writes `AGENTS.md` there, with `CLAUDE.md` and
+`GEMINI.md` deferring to it, so every agent is told to clone into that
+directory owner-prefixed. The files are written once; `wt new --force`
+rewrites them after the template changes.
+
+```sh
+wt ls                                   # every workspace and the repos it holds
+wt clone feature/telos-sync spincyc/telos
+wt status feature/telos-sync            # branch, cleanliness, ahead/behind
+wt git feature/telos-sync -- log --oneline -3
+wt fetch feature/telos-sync             # or pull, --ff-only
+wt agents                               # occupied and free agent slots
+wt check                                # environment and layout sanity check
+wt rm feature/telos-sync                # refuses uncommitted, unpushed, or stashed work
+```
+
+A verb reads its first argument as the workspace when that workspace already
+exists, or when the current directory is not inside one; otherwise it acts on
+the workspace you are standing in. `wt` cannot change the calling shell's
+directory, so use `cd "$(wt path feature/telos-sync)"`.
+
+Concurrent agents are capped. Each launch holds one slot as an open `flock`
+descriptor that survives the exec into the agent, so the kernel releases it
+when the agent exits however it exits, and there is no stale state to clean
+up. `wt agents` reports the slots; a launch past the cap is refused.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `WT_ROOT` | `~/git/worktrees` | Workspace root |
+| `WT_NAMESPACE` | `feature` | Prefix applied to bare names |
+| `WT_AGENT` | `claude` | Agent used when none is named |
+| `WT_MAX_AGENTS` | `4` | Concurrent agent slots |
+| `WT_FORGE` | `https://github.com` | Base URL for `owner/repo` clones |
+
+Bare `owner/repo` clones go through `gh` when it is installed, so private
+repositories need no separate credential setup; explicit URLs always go
+through `git clone`.
+
+`bin/wt` is a thin entry point over the `wt` package in `python/`, which the
+installer links to `~/.local/lib/python/wt`. `.zshenv` puts that directory on
+`PYTHONPATH`, so other scripts can reuse the pieces directly:
+
+```python
+from wt.config import Config
+from wt import repos, workspaces
+
+config = Config.from_env()
+for workspace in workspaces.listing(config):
+    print(workspace.name, [status.branch for status in workspace.statuses()])
+```
+
+The modules are separated so each is usable alone: `wt.config` settings,
+`wt.names` name and path safety, `wt.gitcmd` a git runner, `wt.repos`
+discovery and status, `wt.clone` clone specs, `wt.guidance` the workspace
+documents, `wt.workspaces` creation and resolution, `wt.slots` the flock
+concurrency limit, `wt.checks` the sanity check, and `wt.cli` the command
+line. Nothing outside `wt.cli` prints.
+
+Run the isolated `wt` suite, which uses temporary roots and local origins and
+never touches `~/git` or the network, with:
+
+```sh
+./tests/wt.sh
+```
 
 ## Local configuration
 
@@ -196,7 +275,9 @@ loaded automatically and must not be committed.
 The managed `.zshenv` prepends `~/.local/bin` to `PATH` for every Zsh
 invocation, so pipx-installed tools such as `aiq` and `tmt` resolve in
 non-interactive shells, hooks, and agent sessions, not only in interactive
-terminals.
+terminals. It also prepends `~/.local/lib/python` to `PYTHONPATH` for the
+repository-managed Python packages, dropping empty entries so the current
+directory never joins `sys.path` by accident.
 
 Keep credentials, SSH keys, shell history, caches, and generated completion
 files outside this repository.

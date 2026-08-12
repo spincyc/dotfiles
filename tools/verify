@@ -187,6 +187,17 @@ def check_tool_registry() -> None:
     run([tmt, "check"])
 
 
+def check_python_modules() -> None:
+    run([sys.executable, "-m", "compileall", "-q", "python", "bin/wt"])
+    for cache in (REPO_ROOT / "python").rglob("__pycache__"):
+        shutil.rmtree(cache, ignore_errors=True)
+
+
+def check_wt() -> None:
+    run(["sh", "-n", "tests/wt.sh"])
+    run(["./tests/wt.sh"])
+
+
 def check_profile() -> None:
     run(["git", "diff", "--check", "HEAD"])
     run(["sh", "-n", "install.sh"])
@@ -232,6 +243,8 @@ def main() -> int:
         check_core_recovery_contract,
         check_tool_registry,
         check_tracked_paths,
+        check_python_modules,
+        check_wt,
         check_profile,
     ]
     if len(sys.argv) > 2 and sys.argv[1] == "--only":
