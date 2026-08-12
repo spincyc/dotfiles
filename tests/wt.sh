@@ -4,9 +4,22 @@
 # developer's Git configuration, or the network.
 set -eu
 
+# Git's environment outranks every config file, so pinning the files is only
+# half the job. GIT_DIR is exported by every git hook and by the bare-repo
+# dotfiles idiom; GIT_INDEX_FILE by every hook. Each one aims the suite's git
+# at a repository that is not the one under test, and the failures land as
+# bare `fatal:` lines before the harness can attribute them.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE \
+  GIT_TEMPLATE_DIR GIT_CONFIG GIT_CONFIG_COUNT
+
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 wt="$repo_dir/bin/wt"
 test_root=$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-wt-test.XXXXXX")
+# Resolved once, here: the fake agent reports `pwd -P`, and on any system
+# where TMPDIR reaches through a symlink — /var on macOS — an unresolved
+# root would never match it.
+test_root=$(CDPATH= cd -- "$test_root" && pwd -P)
 origins="$test_root/origins"
 work="$test_root/worktrees"
 state="$test_root/state"
@@ -179,9 +192,9 @@ EOF
 # A stand-in agent that records where it was launched and what it received.
 cat >"$fake_bin/fake-agent" <<'EOF'
 #!/bin/sh
-printf 'agent cwd=%s slot=%s workspace=%s branch=%s aiq_disable=%s args=%s\n' \
-  "$(pwd -P)" "${WT_AGENT_SLOT:-}" "${WT_WORKSPACE:-}" "${WT_BRANCH:-}" \
-  "${AIQ_DISABLE:-unset}" "$*"
+printf 'agent=%s cwd=%s slot=%s workspace=%s dir=%s branch=%s aiq_disable=%s args=%s\n' \
+  "$(basename -- "$0")" "$(pwd -P)" "${WT_AGENT_SLOT:-}" "${WT_WORKSPACE:-}" \
+  "${WT_WORKSPACE_DIR:-}" "${WT_BRANCH:-}" "${AIQ_DISABLE:-unset}" "$*"
 EOF
 chmod 755 -- "$fake_bin/fake-agent"
 
@@ -189,6 +202,9 @@ chmod 755 -- "$fake_bin/fake-agent"
 # machine that happens to have a real claude or codex, and `wt check` fails on
 # a clean CI box for a reason that has nothing to do with wt.
 for agent_name in claude codex; do
+  # A plain copy is enough now that the script reports its own $0: identical
+  # copies that said nothing made `wt claude X` and `wt X` indistinguishable,
+  # so the dispatch test could not fail.
   cp -- "$fake_bin/fake-agent" "$fake_bin/$agent_name"
   chmod 755 -- "$fake_bin/$agent_name"
 done
@@ -419,7 +435,9 @@ if git -C "$work/telos/demo/spincyc/beta" rev-parse --verify --quiet \
   fail "fetch did not prune a deleted remote branch"
 fi
 fetch_out=$(wt_run fetch telos/demo 2>/dev/null)
-assert_missing "$fetch_out" '=='
+# stdout must be empty, not merely free of headers: assert_missing is
+# satisfied by empty input, so it passed whatever fetch did.
+[ -z "$fetch_out" ] || fail "fetch put something on stdout: $fetch_out"
 
 printf '# status reports branch, upstream, and what changed\n'
 status_out=$(wt_run status telos/demo)
@@ -479,8 +497,14 @@ assert_contains "$launch_out" 'slot=1'
 
 printf '# a named agent is launched by name\n'
 named_out=$(wt_run claude telos/demo 2>/dev/null)
+# The stand-ins name themselves, so this distinguishes `wt claude X` from
+# `wt X`; identical copies made the two indistinguishable and the section
+# unable to fail.
+assert_contains "$named_out" 'agent=claude'
 assert_contains "$named_out" 'workspace=telos/demo'
 assert_contains "$named_out" "cwd=$work/telos/demo"
+assert_contains "$(wt_run codex telos/demo 2>/dev/null)" 'agent=codex'
+assert_contains "$(wt_run telos/demo 2>/dev/null)" 'agent=fake-agent'
 
 printf '# the launched agent keeps no work ledger\n'
 assert_contains "$launch_out" 'aiq_disable=1'
@@ -585,6 +609,7 @@ mkdir -p -- "$scratch_ws/spincyc/gamma"
 git clone --quiet "file://$origins/spincyc/beta" \
   "$scratch_ws/spincyc/gamma" 2>/dev/null
 gamma_exclude="$scratch_ws/spincyc/gamma/.git/info/exclude"
+[ -f "$gamma_exclude" ] || fail "the hand-made clone has no exclude file"
 assert_missing "$(cat "$gamma_exclude")" '.scratch/'
 wt_run tidy telos/scratch >/dev/null
 assert_contains "$(cat "$gamma_exclude")" '.scratch/'
@@ -940,6 +965,53 @@ assert_contains "$(wt_run rm naming/a..b)" 'removed'
 [ ! -e "$wt_root/naming/a..b" ] || fail "rm could not reach a legacy name"
 # A slug git accepts under the prefix is not refused for standing alone.
 wt_run new naming/HEAD >/dev/null || fail "feature/HEAD is a legal branch"
+
+printf '# a commit reachable only from a local tag is unsaved work\n'
+wt_root="$test_root/tagged"
+wt_run clone -w tag/work "file://$origins/spincyc/alpha" >/dev/null 2>&1 ||
+  fail "clone into the tagged workspace failed"
+tag_repo="$wt_root/tag/work/spincyc/alpha"
+git -C "$tag_repo" push --quiet -u origin feature/work
+# Parked the way an agent parks work before switching away: a tag, and no
+# branch anywhere pointing at it.
+git -C "$tag_repo" checkout --quiet --detach
+printf 'parked\n' >"$tag_repo/PARKED.md"
+git -C "$tag_repo" add PARKED.md
+git -C "$tag_repo" commit --quiet -m 'parked work'
+git -C "$tag_repo" tag wip-save
+git -C "$tag_repo" checkout --quiet feature/work
+tag_rm=$(wt_run rm tag/work 2>&1) && fail "rm discarded a tagged commit"
+assert_contains "$tag_rm" 'unsaved  spincyc/alpha'
+assert_contains "$(wt_run sweep -n tag/work)" 'kept     tag/work'
+git -C "$tag_repo" tag -d wip-save >/dev/null
+wt_root="$work"
+
+printf '# a workspace wt cannot read is refused, not read as empty\n'
+wt_root="$test_root/unreadable"
+wt_run new ur/work >/dev/null 2>&1
+chmod 000 "$wt_root/ur/work"
+assert_contains "$(wt_run sweep -n ur/work)" 'wt cannot read this directory'
+ur_rm=$(wt_run rm ur/work 2>&1) && fail "rm deleted a workspace it cannot read"
+assert_contains "$ur_rm" 'wt cannot read this directory'
+assert_contains "$(wt_run check 2>&1)" 'ur/work cannot be read'
+chmod 755 "$wt_root/ur/work"
+wt_root="$work"
+
+printf '# push leaves a clone that has left the workspace branch alone\n'
+wt_root="$test_root/offbranch"
+wt_run clone -w ob/work "file://$origins/spincyc/alpha" >/dev/null 2>&1 ||
+  fail "clone into the offbranch workspace failed"
+ob_repo="$wt_root/ob/work/spincyc/alpha"
+git -C "$ob_repo" checkout --quiet -b review-someone-else
+printf 'x\n' >"$ob_repo/REVIEW.md"
+git -C "$ob_repo" add REVIEW.md
+git -C "$ob_repo" commit --quiet -m 'a review checkout'
+ob_out=$(wt_run push ob/work 2>/dev/null)
+assert_contains "$ob_out" 'skipped  spincyc/alpha  on review-someone-else'
+assert_contains "$ob_out" '0 repositories published'
+git ls-remote --heads "$origins/spincyc/alpha" review-someone-else |
+  grep -q . && fail "push published a branch that is not the workspace branch"
+wt_root="$work"
 
 printf '# one clone that cannot be tidied does not abandon its siblings\n'
 wt_root="$test_root/tidyfail"
