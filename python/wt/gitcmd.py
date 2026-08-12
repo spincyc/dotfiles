@@ -2,7 +2,12 @@
 
 `read` captures output for inspection and never raises on a failing command;
 `stream` lets git write straight to the terminal, which is what the fan-out
-verbs want.
+verbs want. `popen` sits between them for a reader that must see each line as
+git writes it, and `run` is for the one command with no repository to run in.
+
+Every entry point goes through `GIT` and, wherever the output is parsed,
+`_parsed_env`: a second spelling of the executable or an unpinned locale is
+how a caller ends up reading a different git than the rest of the tool does.
 """
 
 import os
@@ -45,6 +50,41 @@ def value(repo: Path, *args: str) -> str | None:
     return output if status == 0 else None
 
 
+def popen(repo: Path, *args: str) -> subprocess.Popen[str]:
+    """Start git in repo with its stdout piped, line buffered, under C.
+
+    A caller that reads the pipe as it fills can account for work git has
+    already done when git later fails: waiting for the whole command to
+    finish throws that account away along with the output.
+    """
+    return subprocess.Popen(
+        [GIT, "-C", str(repo), *args],
+        text=True,
+        bufsize=1,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env=_parsed_env(),
+    )
+
+
 def stream(repo: Path, args: list[str]) -> int:
     """Run git in repo with its output attached to this process."""
     return subprocess.run([GIT, "-C", str(repo), *args], check=False).returncode
+
+
+def run(args: list[str], quiet: bool = False) -> int:
+    """Run git outside any repository, under the pinned C locale.
+
+    Cloning has no repository to run in, which is exactly the case that
+    tempts a caller into its own bare `git`. quiet sends both streams to
+    DEVNULL so a script importing wt can clone without unsuppressable
+    chatter.
+    """
+    sink = subprocess.DEVNULL if quiet else None
+    return subprocess.run(
+        [GIT, *args],
+        stdout=sink,
+        stderr=sink,
+        check=False,
+        env=_parsed_env(),
+    ).returncode

@@ -3,17 +3,23 @@
 Whatever form the spec takes, the clone lands at ``<owner>/<repo>`` inside the
 workspace, on the workspace branch. Bare ``owner/repo`` specs go through gh
 when it is installed, so private repositories work without a separate
-credential setup.
+credential setup, and a path on this disk is cloned from where it is: seeding
+a workspace from a canonical checkout is both legitimate and far faster than
+going back to the forge.
 """
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import branches, scratch
+from . import branches, gitcmd, scratch
 from .errors import WtError
 from .names import is_safe_component
+
+# A spec that starts one of these ways names the filesystem, not a forge.
+_LOCAL_PREFIXES = ("/", "./", "../", "~")
 
 
 @dataclass(frozen=True)
@@ -32,10 +38,31 @@ class CloneSpec:
         return self.url or f"{forge.rstrip('/')}/{self.name}.git"
 
 
+def _local_path(spec: str) -> str:
+    """Expand a local spec to one absolute path that means one repository.
+
+    `~` and a relative path are both read against this process, so they are
+    settled here rather than left for git to resolve somewhere else. The
+    result is normalised lexically, the way the shell reads `..`, so that a
+    path like ../telos still names an owner directory that exists.
+    """
+    expanded = os.path.expanduser(spec)
+    return os.path.normpath(os.path.abspath(expanded))
+
+
 def parse(spec: str) -> CloneSpec:
-    """Read owner/repo, https://host/owner/repo(.git) or git@host:owner/repo."""
+    """Read a local path, owner/repo, https://host/owner/repo(.git) or SSH.
+
+    A local path becomes the clone URL itself. Treating it as a bare
+    forge spec — which is what keeping only its last two components amounts
+    to — quietly clones a different repository of the same name from the
+    network, at a different commit and without any of the local branches.
+    """
     url: str | None = None
-    if "://" in spec:
+    if spec.startswith(_LOCAL_PREFIXES):
+        url = _local_path(spec)
+        tail = url
+    elif "://" in spec:
         url = spec
         tail = spec.split("://", 1)[1].partition("/")[2]
     elif "@" in spec and ":" in spec.split("@", 1)[1]:
@@ -75,17 +102,25 @@ def into(
 
     target.parent.mkdir(parents=True, exist_ok=True)
     if spec.url is None and shutil.which("gh"):
+        # gh is not git, so it is the one command here that wt runs itself.
         command = ["gh", "repo", "clone", spec.name, str(target)]
+        status = subprocess.run(command, check=False).returncode
     else:
-        command = ["git", "clone", "--", spec.clone_url(forge), str(target)]
+        # Through gitcmd so the configured git and its pinned locale apply
+        # to the clone as they do to every other command wt runs.
+        status = gitcmd.run(
+            ["clone", "--", spec.clone_url(forge), str(target)]
+        )
 
-    if subprocess.run(command, check=False).returncode != 0:
+    if status != 0:
         raise WtError(f"clone failed: {spec.name}")
     if not branches.checkout(target, branch):
         raise WtError(
             f"cloned {spec.name}, but it would not go on branch {branch}"
         )
     # Local, never committed: transient files go under .scratch here, and a
-    # clone that hides them cannot be mistaken for one holding work.
-    scratch.ensure_exclude(target)
+    # clone that hides them cannot be mistaken for one holding work. Bounded
+    # by the workspace, because a clone of a linked worktree would otherwise
+    # write the exclusion into the canonical repository it came from.
+    scratch.ensure_exclude(target, root=workspace_dir)
     return True

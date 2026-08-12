@@ -67,9 +67,11 @@ a hostname.
 
 Run the smallest relevant checks; `make verify` is the authoritative
 repository-wide battery: syntax and tmux checks, temp-home install,
-bootstrap budget, bootstrap-file, cross-reference, index-parity,
-tool-registry (`tmt check`), journal-artifact, Python byte-compile, and
-`tests/wt.sh` checks. `tools/verify --only CHECK ...` runs named checks;
+Arch-package-list, bootstrap budget, bootstrap-file, cross-reference,
+index-parity, core-recovery-contract, tool-registry (`tmt check`),
+journal-artifact, Python byte-compile, and the `tests/wt.sh` and
+`tests/wt_unit.py` checks.
+`tools/verify --only CHECK ...` runs named checks;
 `make verify-guidance` is the documentation-only subset
 (`35-guidance-maintenance.md`). The battery does not cover the isolated
 profile checks — run those separately when profiles change:

@@ -198,6 +198,10 @@ def check_wt() -> None:
     run(["./tests/wt.sh"])
 
 
+def check_wt_unit() -> None:
+    run([sys.executable, "tests/wt_unit.py"])
+
+
 def check_profile() -> None:
     run(["git", "diff", "--check", "HEAD"])
     run(["sh", "-n", "install.sh"])
@@ -262,6 +266,7 @@ def main() -> int:
         check_tracked_paths,
         check_python_modules,
         check_wt,
+        check_wt_unit,
         check_profile,
     ]
     if len(sys.argv) > 2 and sys.argv[1] == "--only":

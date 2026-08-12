@@ -209,18 +209,28 @@ repositories a workspace holds are still cloned explicitly.
 
 Every clone in a workspace works on one branch, `feature/<slug>`. `wt clone`
 creates it and, until it is published, points it at the branch the clone
-arrived on, so `wt status` and `wt pull` stay meaningful, `wt rm` can still
+arrived on, so `wt status` and `wt sync` stay meaningful, `wt rm` can still
 tell saved work from unsaved, and a bare `git push` refuses instead of
-sending the work to the default branch. Publishing is therefore explicit:
-`git push -u origin "$(wt branch)"`. `wt check` warns about a repository that
-has left the branch, and `WT_BRANCH_PREFIX` renames the `feature` half.
+sending the work to the default branch. That refusal is why the managed
+`.gitconfig` pins `push.default = simple` rather than trusting the Git
+default. Publishing is therefore explicit: `wt push`, or
+`git push -u origin "$WT_BRANCH"` inside one clone. `wt check` warns about a
+repository that has left the branch, and `WT_BRANCH_PREFIX` renames the
+`feature` half.
+
+`wt push` publishes only where there is something to publish: it skips a
+clone that has left the workspace branch, and one whose commits a remote
+already has. A blanket `git push -u` across the workspace would create a
+remote branch for every clone the agent never touched and retarget their
+upstreams, after which the upstream column of `wt status` could no longer
+say which clone holds the work.
 
 Creating a workspace writes `AGENTS.md` there, with `CLAUDE.md` and
 `GEMINI.md` deferring to it, so every agent is told to clone into that
 directory owner-prefixed and to commit on the workspace branch. The files are
 written once; `wt new --force [<workspace>]` rewrites them after the template
-changes — `--force` must come first — so an existing workspace keeps the
-instructions it was created with until then.
+changes, so an existing workspace keeps the instructions it was created with
+until then.
 
 That guidance also gives transient work a home. Notes, logs, scratch scripts,
 downloaded samples, and experiment output belong under `.scratch`, in two
@@ -228,7 +238,7 @@ places and no others: `<workspace>/.scratch` for anything that is not about
 one repository, and `<owner>/<repo>/.scratch` at the top of a clone. `wt
 clone` adds `.scratch/` to each new clone's `.git/info/exclude`, so scratch
 there stays out of `git status`, out of `git add .`, and out of the way of
-`wt clean`. That exclusion is local and is never committed, so it costs the
+`wt sweep`. That exclusion is local and is never committed, so it costs the
 cloned repository nothing. A clone made by hand has none until a real
 `wt tidy` gives it one, and a repository that already tracks something under
 `.scratch` is not covered at all — `wt tidy` reports those and leaves them
@@ -253,32 +263,55 @@ supported.
 
 ```sh
 wt ls                                   # every workspace and the repos it holds
+wt ls -q                                # bare names, one per line, for scripts
 wt clone telos/agent-sync spincyc/telos # cloned onto feature/agent-sync
+wt clone -w telos/agent-sync ~/git/spincyc/telos   # or from a path on this disk
 wt pwd                                  # the workspace holding this directory
 wt branch telos/agent-sync              # the workspace branch
-wt status telos/agent-sync              # branch, cleanliness, ahead/behind
+wt status telos/agent-sync              # branch, upstream, cleanliness, ahead/behind
+wt log telos/agent-sync                 # the commits of this line of work
 wt git telos/agent-sync -- log --oneline -3
-wt fetch telos/agent-sync               # or pull, --ff-only
+wt exec telos/agent-sync -- rg -n TODO  # any command, in every clone
+wt fetch telos/agent-sync               # git fetch --prune in every clone
+wt sync telos/agent-sync                # fetch, then rebase onto the default branch
+wt push telos/agent-sync                # publish where there is work to publish
 wt agents                               # occupied and free agent slots
 wt check                                # environment and layout sanity check
 wt rm telos/agent-sync                  # refuses uncommitted, unpushed, or stashed work
-wt clean --dry-run                      # the workspaces a sweep would remove
+wt sweep --dry-run                      # the workspaces a sweep would remove
 wt tidy --dry-run telos/agent-sync      # what tidy would delete, ignored files too
 ```
+
+`wt sync` fetches and rebases each clone onto its default branch. `wt pull`
+is deliberately *not* an alias for it: `git pull --ff-only` never rewrote
+anything, `sync` rebases, and pointing fifteen years of muscle memory at a
+history rewrite without asking is not a rename. `wt pull` refuses and names
+`wt sync` instead.
+
+`wt clone` reads `owner/repo`, a URL, or a path on this disk — `/…`, `~/…`,
+`./…` or `../…` — and clones a local path from where it is, which is both
+legitimate and faster than going back to the forge. Because a clone spec and
+a workspace name look alike, `clone` takes `-w <workspace>` to name one
+explicitly rather than guessing.
 
 A verb reads its first argument as the workspace when that workspace already
 exists, or when the current directory is not inside one; otherwise it acts on
 the workspace you are standing in. `wt pwd` is the exception that never reads
 an argument: it answers *where am I*, printing the root of the workspace the
-current directory belongs to and failing outside `WT_ROOT`. `clean` and
-`tidy` are stricter: a first argument must name an existing workspace or the
-command fails, and `wt clean` inside a workspace still sweeps all of them,
-keeping only the one you are standing in. `wt` cannot change the calling
-shell's directory, so use `cd "$(wt path telos/agent-sync)"`, or
-`cd "$(wt pwd)"` to climb back out of a clone.
+current directory belongs to and failing outside `WT_ROOT`. `new`, `sweep`
+and `tidy` never infer: they take a workspace name or none at all, `sweep`
+and `tidy` fail on a name that does not exist, and `wt sweep` inside a
+workspace still considers all of them, keeping the one you are standing in.
+`wt` cannot change the calling shell's directory, so use
+`cd "$(wt path telos/agent-sync)"`, or `cd "$(wt pwd)"` to climb back out of
+a clone.
 
-`wt rm` and `wt clean` divide the work of throwing a workspace away. `wt rm`
-disposes of one named workspace and takes `--force`; `wt clean` sweeps, and
+`--force` (`-f`) and `--dry-run` (`-n`) are read from wherever in the
+arguments they were typed, so `wt rm telos/demo -f` works as readily as
+`wt rm -f telos/demo`.
+
+`wt rm` and `wt sweep` divide the work of throwing a workspace away. `wt rm`
+disposes of one named workspace and takes `--force`; `wt sweep` sweeps, and
 with no argument considers every workspace under `WT_ROOT`. It removes each
 workspace whose work is already saved, by the test `wt rm` uses: nothing
 uncommitted and nothing untracked, since a stray untracked file counts as
@@ -310,7 +343,16 @@ workspace is the one you are standing in.
 Concurrent agents are capped. Each launch holds one slot as an open `flock`
 descriptor that survives the exec into the agent, so the kernel releases it
 when the agent exits however it exits, and there is no stale state to clean
-up. `wt agents` reports the slots; a launch past the cap is refused.
+up. `wt agents` reports the slots; a launch past the cap is refused with
+exit 75, `EX_TEMPFAIL`, which is what makes waiting for a slot writable:
+
+```sh
+until wt claude telos/agent-sync; do sleep 30; done
+```
+
+The other statuses are the ordinary ones: 2 for a usage error, 1 for a
+failure, 130 for an interrupt, and 141 for a closed pipe, so `wt ls | head`
+stays quiet.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -320,10 +362,26 @@ up. `wt agents` reports the slots; a launch past the cap is refused.
 | `WT_AGENT` | `claude` | Agent used when none is named |
 | `WT_MAX_AGENTS` | `4` | Concurrent agent slots |
 | `WT_FORGE` | `https://github.com` | Base URL for `owner/repo` clones |
+| `XDG_STATE_HOME` | `~/.local/state` | Where the agent slots live |
+
+`XDG_STATE_HOME` is part of the contract, not an implementation detail: the
+slot locks live in `$XDG_STATE_HOME/wt/agents`, so two shells that disagree
+about it get independent pools and `WT_MAX_AGENTS` agents each.
 
 Bare `owner/repo` clones go through `gh` when it is installed, so private
-repositories need no separate credential setup; explicit URLs always go
-through `git clone`.
+repositories need no separate credential setup; explicit URLs and local
+paths always go through `git clone`.
+
+Five variables go the other way, exported into the agent `wt` launches and
+into nothing else — a shell you opened yourself has none of them:
+
+| Variable | Value |
+| --- | --- |
+| `WT_WORKSPACE` | The workspace name, `<project>/<slug>` |
+| `WT_WORKSPACE_DIR` | Its absolute path, the directory the agent starts in |
+| `WT_BRANCH` | The workspace branch, for `git push -u origin "$WT_BRANCH"` |
+| `WT_AGENT_SLOT` | Which of `WT_MAX_AGENTS` slots this agent holds |
+| `AIQ_DISABLE` | Set to `1`: a workspace keeps no work ledger |
 
 `bin/wt` is a thin entry point over the `wt` package in `python/`, which the
 installer links to `~/.local/lib/python/wt`. `.zshenv` puts that directory on
@@ -340,19 +398,29 @@ for workspace in workspaces.listing(config):
 
 The modules are separated so each is usable alone: `wt.config` settings,
 `wt.errors` the user-facing error types, `wt.names` name and path safety,
-`wt.gitcmd` a git runner, `wt.repos` discovery and status, `wt.branches` the
-workspace branch, `wt.clone` clone specs, `wt.guidance` the workspace
-documents, `wt.scratch` the `.scratch` convention and its local Git
-exclusion, `wt.workspaces` creation and resolution, `wt.slots` the flock
-concurrency limit, `wt.checks` the sanity
-check, and `wt.cli` the command line. Nothing outside `wt.cli` prints.
+`wt.gitcmd` a git runner, `wt.repos` discovery, status, the default branch
+and the questions that decide whether a clone holds unsaved work,
+`wt.branches` the workspace branch and its upstream, `wt.clone` clone specs
+including local paths, `wt.guidance` the workspace documents, `wt.scratch`
+the `.scratch` convention and its local Git exclusion, `wt.workspaces`
+creation, resolution and the one disposal gate every destructive verb goes
+through, `wt.slots` the flock concurrency limit, `wt.checks` the sanity
+check, and `wt.cli` the command line, whose `agent_environment` is the
+exported-variable contract above. Nothing outside `wt.cli` prints: the only
+output another module produces is a child git's own, on the terminal it was
+handed.
 
-Run the isolated `wt` suite, which uses temporary roots and local origins and
-never touches `~/git` or the network, with:
+Run the isolated `wt` suites, which use temporary roots and local origins and
+never touch `~/git`, your real `HOME`, or the network, with:
 
 ```sh
-./tests/wt.sh
+./tests/wt.sh        # end to end, through bin/wt
+./tests/wt_unit.py   # the seams a shell cannot reach
 ```
+
+`make verify` runs both. The unit suite covers what a shell test cannot: the
+`LC_ALL=C` pin that keeps `git clean` parseable, the slot ceiling, and the
+unsaved-work oracle failing closed on a repository git cannot read.
 
 ## Local configuration
 
@@ -365,17 +433,21 @@ non-interactive shells, hooks, and agent sessions, not only in interactive
 terminals.
 
 It also *appends* this repository's own `bin/` directory, so a tool added
-there is on `PATH` in the next shell with no reinstall and no `managed_links`
-entry. The location is resolved from `.zshenv` through its symlink, so the
+there is on `PATH` in the next Zsh shell with no reinstall. That is a
+convenience, not a substitute for installing it: a tool meant to be a
+portable command still gets a `managed_links` entry, which is what makes it
+resolve outside Zsh and puts it in `~/.local/bin` ahead of this entry. `wt`
+has both. The location is resolved from `.zshenv` through its symlink, so the
 checkout works wherever it lives. Appending rather than prepending keeps
 repository tools from shadowing a system command of the same name; a tool
 that must win needs an explicit `~/.local/bin` link. Two consequences worth
 knowing: anything executable that lands in `bin/` becomes a command, including
 on a branch checkout, and `tools/` is deliberately left off `PATH` because
 those are repository checks run as `tools/<id>` or through `make`, with names
-like `verify` that should not become global commands. It also prepends `~/.local/lib/python` to `PYTHONPATH` for the
-repository-managed Python packages, dropping empty entries so the current
-directory never joins `sys.path` by accident.
+like `verify` that should not become global commands. It also prepends
+`~/.local/lib/python` to `PYTHONPATH` for the repository-managed Python
+packages, dropping empty entries so the current directory never joins
+`sys.path` by accident.
 
 Keep credentials, SSH keys, shell history, caches, and generated completion
 files outside this repository.

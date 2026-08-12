@@ -5,9 +5,9 @@ drive the rest of the package against a temporary root.
 """
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
 DEFAULT_BRANCH_PREFIX = "feature"
 DEFAULT_AGENT = "claude"
@@ -28,7 +28,11 @@ class Config:
     agent: str = DEFAULT_AGENT
     max_agents: int = DEFAULT_MAX_AGENTS
     forge: str = DEFAULT_FORGE
-    state_dir: Path = Path.home() / ".local" / "state" / "wt"
+    # None means "derive from HOME when asked". Reading the home directory at
+    # class-definition time would make importing this module depend on the
+    # environment, and would quietly point a hand-built Config at the real
+    # home's lock files instead of the root it was given.
+    state_dir: Path | None = None
     # Kept verbatim so `wt check` can report an unusable value instead of
     # failing to build a Config at all.
     max_agents_raw: str = str(DEFAULT_MAX_AGENTS)
@@ -64,4 +68,24 @@ class Config:
 
     @property
     def agents_dir(self) -> Path:
-        return self.state_dir / "agents"
+        state = self.state_dir
+        if state is None:
+            state = Path.home() / ".local" / "state" / "wt"
+        return state / "agents"
+
+    @property
+    def max_agents_valid(self) -> bool:
+        """False when WT_MAX_AGENTS was not a positive integer.
+
+        An unusable limit is not "no slots to check": every consumer that
+        could destroy something must refuse outright, because a survey sized
+        from a value nobody understood would report an empty pool and let a
+        sweep delete the workspace a live agent is holding.
+        """
+        try:
+            limit = int(self.max_agents_raw)
+        except ValueError:
+            return False
+        # A Config assembled by hand carries the default raw string, so the
+        # parsed limit has to agree before the value counts as usable.
+        return limit > 0 and self.max_agents > 0

@@ -5,7 +5,8 @@ typeset -U path PATH
 path=("$HOME/.local/bin" $path)
 
 # Append this repository's own bin directory so a tool added under bin/ is on
-# PATH in the next shell, with no reinstall and no managed_links entry. The
+# PATH in the next shell, with no reinstall; it still gets a managed_links entry, so
+# non-Zsh shells find it too. The
 # path is resolved from this file through its symlink, so the checkout can
 # live anywhere; installed links keep bin/ tools working outside Zsh too.
 # Appended, not prepended: nothing here should shadow a system command.

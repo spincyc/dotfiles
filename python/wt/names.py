@@ -10,10 +10,16 @@ import os
 import re
 from pathlib import Path
 
+from . import gitcmd
 from .errors import WtError
 
 SAFE_COMPONENT = re.compile(r"\A[A-Za-z0-9._-]+\Z")
 RESERVED = frozenset({".", ".."})
+# What Git will not have anywhere in a reference name, quite apart from the
+# charset a workspace name is already held to.
+_REF_FORBIDDEN = frozenset(
+    " ~^:?*[\\" + "".join(chr(code) for code in range(0x20)) + chr(0x7F)
+)
 
 
 def is_safe_component(value: str) -> bool:
@@ -25,6 +31,33 @@ def is_safe_component(value: str) -> bool:
     if value.startswith(".") or value.endswith(".") or value.endswith(".lock"):
         return False
     return bool(SAFE_COMPONENT.match(value))
+
+
+def valid_branch(name: str) -> bool:
+    """True when name is usable as a Git branch.
+
+    Asks Git whenever it can, because the reference rules are Git's and a
+    copy of them here would drift. The local rules stand in only when git is
+    not installed, and are deliberately the stricter reading: refusing a
+    workable name costs a rename, accepting an unusable one costs a
+    workspace that nothing can be checked out into.
+    """
+    if not name or name.startswith("-"):
+        # An argument beginning with a dash never reaches git as a name.
+        return False
+    if gitcmd.available():
+        checked = ["check-ref-format", "--branch", name]
+        return gitcmd.run(checked, quiet=True) == 0
+    if name.startswith("/") or name.endswith("/") or name.endswith("."):
+        return False
+    if ".." in name or "@{" in name or name == "@":
+        return False
+    if any(char in _REF_FORBIDDEN for char in name):
+        return False
+    return all(
+        part and not part.startswith(".") and not part.endswith(".lock")
+        for part in name.split("/")
+    )
 
 
 def normalize_workspace(value: str, project: str | None) -> str:
@@ -40,6 +73,10 @@ def normalize_workspace(value: str, project: str | None) -> str:
         parts = [project, parts[0]]
     if len(parts) != 2 or not all(is_safe_component(part) for part in parts):
         raise WtError(f"not a usable workspace name: {value}")
+    # Whether the name makes a usable *branch* is asked at creation, not
+    # here: this function also resolves workspaces that already exist, and a
+    # rule applied on the way in would strand any directory that predates
+    # it — `wt ls` would show it while every named verb refused it.
     return "/".join(parts)
 
 

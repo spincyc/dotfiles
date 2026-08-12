@@ -5,7 +5,7 @@ slug, so the commits of one line of work are recognisable in whichever
 repository they land in.
 
 A fresh branch is made to track the remote branch the clone arrived on. That
-keeps `wt status` and `wt pull` meaningful before anything is pushed, keeps
+keeps `wt status` and `wt sync` meaningful before anything is pushed, keeps
 `wt rm` able to tell saved work from unsaved, and makes a bare `git push`
 refuse rather than send the work to the default branch: publishing is
 deliberately `git push -u origin <branch>`.

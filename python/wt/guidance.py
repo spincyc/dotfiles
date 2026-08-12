@@ -63,7 +63,7 @@ Rules:
 - Keep unrelated work out of this workspace. One workspace, one line of work.
 - Everything below this directory is disposable. `wt rm {workspace}` deletes
   it once no repository holds uncommitted, unpushed, or stashed work, and
-  `wt clean` sweeps every workspace that has reached that state. Leave
+  `wt sweep` clears every workspace that has reached that state. Leave
   nothing here that is not committed and pushed.
 
 ## Always put transient items under `.scratch`
@@ -86,7 +86,7 @@ want it sooner.
 Anything you leave outside those two places holds this workspace open. An
 untracked file beside the code is indistinguishable from work you forgot to
 commit, and a stray file at the top of this directory is something `wt` can
-make no sense of; `wt clean` keeps the workspace in either case.
+make no sense of; `wt sweep` keeps the workspace in either case.
 
 `wt tidy` deletes both `.scratch` directories and everything the clones
 ignore, without asking — including ignored build output such as a
@@ -98,11 +98,28 @@ nothing. Anything you leave in `.scratch` is gone at the next tidy.
 This workspace keeps no local work state. Do not use `aiq` in it: no
 ingesting, claiming, enqueuing, settling, or journal initialization, and no
 treating the absence of work state as a defect. Do not use `tmt` here either:
-record no candidates and scaffold no registry. `wt` exports `AIQ_DISABLE`, so
-the installed hooks are already inert; never work around that.
+record no candidates and scaffold no registry. `wt` exports `AIQ_DISABLE=1`,
+which switches the installed hooks off — but only for an aiq newer than
+`0.3.0a1`; an older one ignores the variable and goes on capturing. The rule
+above holds either way; never work around it.
 
 A cloned repository inside this workspace keeps its own contracts. If it has
 a `tmt.json`, tool making applies to that repository normally.
+
+## What `wt` sets in this session
+
+`wt` exports five variables into the agent it launches:
+
+- `WT_WORKSPACE` — this workspace's name, `{workspace}`.
+- `WT_WORKSPACE_DIR` — its absolute path, the directory you started in.
+- `WT_BRANCH` — the workspace branch, `{branch}`. Publish with
+  `git push -u origin "$WT_BRANCH"` rather than retyping the name.
+- `WT_AGENT_SLOT` — which of the concurrent agent slots this session holds;
+  `wt agents` lists what each one is running.
+- `AIQ_DISABLE` — the work-ledger switch described above.
+
+They exist only in this session; a shell opened anywhere else has none of
+them.
 
 ## Which instructions govern a change
 
@@ -130,9 +147,23 @@ def documents(workspace: str, branch: str) -> dict[str, str]:
 def write(
     directory: Path, workspace: str, branch: str, force: bool = False
 ) -> bool:
-    """Write the guidance unless it is already there. True when written."""
-    if (directory / CANONICAL).exists() and not force:
-        return False
+    """Write each guidance file that is missing. True when any was written.
+
+    Every name is probed, not just `AGENTS.md`: judging the whole set by one
+    of them left a deleted `CLAUDE.md` gone for good, since the only way back
+    was `wt new --force`, which also rewrites the file the user annotated.
+    """
+    written = False
     for name, text in documents(workspace, branch).items():
-        (directory / name).write_text(text, encoding="utf-8")
-    return True
+        path = directory / name
+        if path.is_symlink():
+            # Writing through a link would put this workspace's guidance
+            # wherever the link points, which need not be in the workspace.
+            if not force:
+                continue
+            path.unlink()
+        elif path.exists() and not force:
+            continue
+        path.write_text(text, encoding="utf-8")
+        written = True
+    return written

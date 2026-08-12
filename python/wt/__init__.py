@@ -10,12 +10,13 @@ The modules are meant to be reused on their own:
 ``wt.errors``      the user-facing error types
 ``wt.names``       workspace-name normalisation and path safety
 ``wt.gitcmd``      a thin ``git`` runner
-``wt.repos``       repository discovery and per-repository status
-``wt.branches``    the workspace branch
+``wt.repos``       discovery, status, and the unsaved-work oracle
+``wt.branches``    the workspace branch and what a clone tracks
 ``wt.clone``       clone-spec parsing and cloning
 ``wt.guidance``    the per-workspace agent guidance documents
 ``wt.scratch``     the ``.scratch`` convention and its local Git exclusion
-``wt.workspaces``  workspace creation, listing, and resolution
+``wt.workspaces``  workspace creation, listing, resolution, and the gate
+                   every destructive verb passes through
 ``wt.slots``       the flock-backed concurrent-agent limit
 ``wt.checks``      the environment and layout sanity check
 ``wt.cli``         the ``wt`` command line

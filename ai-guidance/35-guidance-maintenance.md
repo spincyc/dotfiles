@@ -9,7 +9,8 @@ Apply these rules when editing the guidance file set — `AI_GUIDANCE.md`,
 - After editing `AI_GUIDANCE.md`, a numbered document, or a bootstrap entry
   point, run `make verify` from the guidance root. For documentation-only
   edits, `make verify-guidance` is the cheap subset: budget, bootstrap,
-  cross-reference, and index checks without the tmux and temp-home battery.
+  cross-reference, index, and recovery-contract checks, without the tmux and
+  temp-home battery.
 - The loader budget has two failing tiers: 250 words is the hard cap, and
   225 already fails with "discuss simplification" — the effective ceiling is
   224. Additions to `AI_GUIDANCE.md` therefore need matching trims or an

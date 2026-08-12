@@ -1,13 +1,48 @@
-"""Workspace creation, listing, and resolution."""
+"""Workspace creation, listing, resolution, and disposal.
+
+One rule shapes this module: every path that deletes something goes through
+`Workspace.blockers`, and nothing deletes anything the gate has not just
+answered for. `wt rm` and `wt sweep` used to ask different questions — rm
+checked two conditions, the sweep checked five, and the sweep asked them up
+to a whole sweep before it acted — so the two disagreed about what was
+disposable and the sweep acted on facts that had since changed.
+"""
 
 import shutil
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Iterator
 
-from . import branches, guidance, names, repos, scratch
+from . import branches, guidance, names, repos, scratch, slots
 from .config import Config
-from .errors import UnsavedWorkError, WtError
+from .errors import RemovalRefused, UnsavedWorkError, WtError
+
+# What `tidy` reports about each path it considered.
+REMOVED = "removed"
+TRACKED = "tracked"
+SKIPPED = "skipped"
+
+Step = tuple[str, str]
+OnStep = Callable[[str, str], None]
+
+
+@dataclass(frozen=True)
+class Inventory:
+    """Everything a workspace directory holds, classified once.
+
+    `checks` and the disposal gate both need to know what a workspace is
+    made of, and they used to derive it separately with rules that had
+    already drifted apart. This is the one answer both read.
+    """
+
+    clones: list[str] = field(default_factory=list)
+    owners: list[str] = field(default_factory=list)
+    strays: list[str] = field(default_factory=list)
+    nested: list[str] = field(default_factory=list)
+    # A directory wt could not read holds an unknown amount of work, which
+    # is not the same as holding none. Without this the removal gate reads
+    # an unreadable workspace as empty and deletes it.
+    readable: bool = True
 
 
 @dataclass(frozen=True)
@@ -47,6 +82,13 @@ class Workspace:
 
         Returns True when the directory itself was created.
         """
+        if not names.valid_branch(self.branch):
+            # Asked once, here, about the string that actually becomes the
+            # branch — the slug alone is not it, and a prefix git dislikes
+            # would otherwise pass unexamined. Refused now it costs a
+            # retyped name; discovered later it costs a directory full of
+            # clones stuck on whatever branch they arrived on.
+            raise WtError(f"not a usable branch name: {self.branch}")
         _ensure_directory(self.config.root)
         _ensure_directory(self.config.root / self.project)
         created = not self.path.exists()
@@ -68,79 +110,21 @@ class Workspace:
             if repos.has_unsaved_work(self.path / name)
         ]
 
+    def inventory(self) -> Inventory:
+        return inventory(self)
+
     def unaccounted(self) -> list[str]:
-        """Everything in the workspace `wt` cannot explain, sorted.
-
-        A sweep decides a workspace is disposable from the state of the
-        clones it can find, so anything it cannot find has to stop it: a
-        repository cloned to the wrong depth, or a file an agent left at the
-        top instead of under `.scratch`, is work no clone reports.
-        """
-        target = self.require()
-        clones = set(self.repo_names())
-        owners = {name.split("/")[0] for name in clones}
-        strays: list[str] = []
-        for entry in sorted(target.iterdir(), key=lambda item: item.name):
-            name = entry.name
-            if name in guidance.FILENAMES:
-                continue
-            if name == scratch.NAME or entry.is_symlink():
-                # A symlink holds nothing; removing it loses no work.
-                continue
-            if not entry.is_dir() or name not in owners:
-                strays.append(name)
-                continue
-            strays += [
-                f"{name}/{child.name}"
-                for child in sorted(
-                    entry.iterdir(), key=lambda item: item.name
-                )
-                if f"{name}/{child.name}" not in clones
-            ]
-        return strays
-
-    def tidy(self, dry_run: bool = False) -> Iterator[tuple[str, str]]:
-        """Delete the transient files, keeping the workspace itself.
-
-        Yields ("removed", path) as each path goes and ("tracked", path) for
-        a `.scratch` Git tracks, which is left where it is. Yielding as the
-        work happens is what keeps the account honest when a later
-        repository fails.
-        """
-        target = self.checked_target()
-
-        if scratch.present(target):
-            if not dry_run:
-                scratch.remove(target / scratch.NAME)
-            yield "removed", scratch.NAME
-
-        for name in self.repo_names():
-            repo = target / name
-            # discover follows symlinks, and git would happily clean a
-            # repository the workspace only points at.
-            if repo.is_symlink() or repo.resolve() != target / name:
-                yield "skipped", name
-                continue
-            if not dry_run:
-                # A clone made by hand never got the exclusion; give it one
-                # before its scratch directory can dirty the repository.
-                scratch.ensure_exclude(repo)
-            if scratch.present(repo):
-                committed = scratch.tracked(repo)
-                if committed:
-                    yield "tracked", f"{name}/{scratch.NAME}"
-                else:
-                    if not dry_run:
-                        scratch.remove(repo / scratch.NAME)
-                    yield "removed", f"{name}/{scratch.NAME}"
-            for path in scratch.clean_ignored(repo, dry_run):
-                yield "removed", f"{name}/{path}"
+        """Everything in the workspace `wt` cannot explain, sorted."""
+        return self.inventory().strays
 
     def checked_target(self) -> Path:
         """The workspace directory, proven to be the one `wt` owns.
 
         Every destructive verb goes through here: an intermediate symlink
         would otherwise let a workspace name reach any directory at all.
+        The path comes back resolved, because a caller that compares it
+        against a resolved child — as tidy does — must not be handed one
+        side of the comparison unresolved.
         """
         target = self.require()
         names.assert_owned_directory(target)
@@ -151,26 +135,211 @@ class Workspace:
                 f"refusing to touch a path resolving outside "
                 f"{self.config.root}: {target}"
             )
-        return target
-
-    def remove(self, force: bool = False, cwd: Path | None = None) -> Path:
-        """Delete the workspace, refusing anything unsafe or unsaved."""
-        resolved = self.checked_target().resolve()
-
-        here = (cwd or Path.cwd()).resolve()
-        if here == resolved or resolved in here.parents:
-            raise WtError(
-                f"refusing to remove the current directory; cd out of "
-                f"{resolved}"
-            )
-
-        if not force:
-            unsaved = self.has_unsaved_work()
-            if unsaved:
-                raise UnsavedWorkError(self.name, unsaved)
-
-        shutil.rmtree(resolved)
         return resolved
+
+    def blockers(
+        self,
+        here: "Workspace | None" = None,
+        busy: slots.BusyAgents | None = None,
+        force: bool = False,
+        cwd: Path | None = None,
+    ) -> list[str]:
+        """Every reason not to delete this workspace, cheapest question first."""
+        return self._gate(here=here, busy=busy, force=force, cwd=cwd)[0]
+
+    def _gate(
+        self,
+        here: "Workspace | None" = None,
+        busy: slots.BusyAgents | None = None,
+        force: bool = False,
+        cwd: Path | None = None,
+    ) -> tuple[list[str], list[str]]:
+        """The reasons not to delete this, and the repositories holding work.
+
+        Asked once and answered once: walking the clones is the expensive
+        half, and `remove` needs both the verdict and the names behind it.
+
+        The order matters for more than speed. A workspace holding a running
+        agent is never asked to walk its clones, so a sweep cannot be slowed
+        or confused by a tree that is being written to as it looks.
+
+        `force` waives the two questions about the user's own work. It never
+        waives standing in the directory or an agent running in it, because
+        neither is the caller's to discard.
+        """
+        reasons: list[str] = []
+
+        target = self.path.resolve() if self.exists() else self.path
+        current = (cwd or Path.cwd()).resolve()
+        if current == target or target in current.parents:
+            reasons.append("the current directory")
+        elif here is not None and here.name == self.name:
+            reasons.append("the current directory")
+
+        if busy is not None and busy.holds(self.name):
+            reasons.append("an agent is running here")
+
+        if reasons or force:
+            # Nothing below can be waived by anything above, and a busy or
+            # current workspace has already earned its keep.
+            return reasons, []
+
+        found = self.inventory()
+        if not found.readable:
+            reasons.append("wt cannot read this directory")
+            return reasons, []
+
+        unsaved = self.has_unsaved_work()
+        if unsaved:
+            reasons.append(f"unsaved: {' '.join(unsaved)}")
+        if found.strays:
+            reasons.append(f"not from wt: {' '.join(found.strays)}")
+        if found.nested:
+            # `git clean` refuses to recurse into a nested repository and
+            # rmtree has no such scruple, so the gate has to supply the
+            # caution. The unsaved-work oracle cannot always see these: a
+            # clone under an ignored *parent* is collapsed to the parent by
+            # git's own listing.
+            reasons.append(f"holds a repository: {' '.join(found.nested)}")
+        return reasons, unsaved
+
+    def tidy(
+        self,
+        dry_run: bool = False,
+        on_step: OnStep | None = None,
+    ) -> list[Step]:
+        """Delete the transient files, keeping the workspace itself.
+
+        Returns every step taken, and calls `on_step` as each one happens so
+        a caller can report in real time. It is deliberately not a generator:
+        a generator that is built and never drained deletes nothing and
+        raises nothing, and the safety check would not even run.
+        """
+        steps: list[Step] = []
+
+        def record(kind: str, path: str) -> None:
+            steps.append((kind, path))
+            if on_step is not None:
+                on_step(kind, path)
+
+        target = self.checked_target()
+
+        if scratch.present(target):
+            if not dry_run:
+                scratch.remove(target / scratch.NAME)
+            record(REMOVED, scratch.NAME)
+
+        for name in self.repo_names():
+            repo = target / name
+            # discover follows symlinks, and git would happily clean a
+            # repository the workspace only points at. Both sides of this
+            # comparison are resolved; comparing a resolved child against an
+            # unresolved parent called every clone a symlink whenever any
+            # directory above the root was one.
+            if repo.is_symlink() or repo.resolve() != target / name:
+                record(SKIPPED, name)
+                continue
+            if not dry_run:
+                # A clone made by hand never got the exclusion; give it one
+                # before its scratch directory can dirty the repository.
+                scratch.ensure_exclude(repo, root=target)
+            if scratch.present(repo):
+                if scratch.tracked(repo):
+                    record(TRACKED, f"{name}/{scratch.NAME}")
+                else:
+                    if not dry_run:
+                        scratch.remove(repo / scratch.NAME)
+                    record(REMOVED, f"{name}/{scratch.NAME}")
+            # Streamed, so a clean that dies partway still accounts for the
+            # paths it had already taken.
+            for path in scratch.clean_ignored(repo, dry_run):
+                record(REMOVED, f"{name}/{path}")
+        return steps
+
+    def remove(
+        self,
+        force: bool = False,
+        cwd: Path | None = None,
+        busy: slots.BusyAgents | None = None,
+        here: "Workspace | None" = None,
+    ) -> Path:
+        """Delete the workspace, refusing anything unsafe or unsaved.
+
+        The gate runs here, immediately before the tree goes, so a sweep
+        that decided a workspace was disposable minutes ago cannot act on
+        an answer that has since changed.
+        """
+        resolved = self.checked_target()
+
+        reasons, unsaved = self._gate(
+            here=here, busy=busy, force=force, cwd=cwd
+        )
+        if unsaved:
+            # Named separately so the caller can list the repositories, even
+            # when something else is also holding the workspace open.
+            raise UnsavedWorkError(self.name, unsaved, reasons)
+        if reasons:
+            raise RemovalRefused(self.name, reasons)
+
+        try:
+            shutil.rmtree(resolved)
+        except OSError as error:
+            raise WtError(
+                f"could not remove {self.name}: {error}"
+            ) from error
+        return resolved
+
+
+def inventory(workspace: Workspace) -> Inventory:
+    """Classify everything in a workspace directory, once.
+
+    A sweep decides a workspace is disposable from the state of the clones
+    it can find, so anything it cannot find has to stop it: a repository
+    cloned to the wrong depth, or a file an agent left at the top instead of
+    under `.scratch`, is work no clone reports.
+    """
+    target = workspace.require()
+    clones = workspace.repo_names()
+    owners = sorted({name.split("/")[0] for name in clones})
+    known = set(clones)
+    strays: list[str] = []
+    nested: list[str] = []
+
+    try:
+        entries = sorted(target.iterdir(), key=lambda item: item.name)
+    except OSError:
+        return Inventory(clones=clones, owners=owners, readable=False)
+
+    for entry in entries:
+        name = entry.name
+        if name in guidance.FILENAMES:
+            continue
+        if name == scratch.NAME or entry.is_symlink():
+            # A symlink holds nothing; removing it loses no work.
+            continue
+        if not entry.is_dir() or name not in set(owners):
+            strays.append(name)
+            continue
+        try:
+            children = sorted(entry.iterdir(), key=lambda item: item.name)
+        except OSError:
+            # Unreadable, so its contents are unknown; naming it as a stray
+            # is what keeps a sweep off it.
+            strays.append(name)
+            continue
+        strays += [
+            f"{name}/{child.name}"
+            for child in children
+            if f"{name}/{child.name}" not in known
+        ]
+
+    for name in clones:
+        if repos.discover(target / name):
+            nested.append(name)
+
+    return Inventory(
+        clones=clones, owners=owners, strays=strays, nested=nested
+    )
 
 
 def _ensure_directory(path: Path) -> None:
@@ -191,19 +360,29 @@ def listing(config: Config) -> list[Workspace]:
     if not root.is_dir():
         return []
     found: list[Workspace] = []
-    for project in sorted(
-        entry
-        for entry in root.iterdir()
-        if entry.is_dir() and not entry.name.startswith(".")
-    ):
-        for slug in sorted(
-            entry for entry in project.iterdir() if entry.is_dir()
-        ):
+    for project in _sorted_dirs(root, skip_dotted=True):
+        for slug in _sorted_dirs(project, skip_dotted=True):
             found.append(Workspace(f"{project.name}/{slug.name}", config))
     return found
 
 
-def prune_projects(config: Config, projects: Iterable[str]) -> list[str]:
+def _sorted_dirs(parent: Path, skip_dotted: bool = False) -> list[Path]:
+    """Directories under parent, sorted, tolerating an unreadable one."""
+    try:
+        entries = [entry for entry in parent.iterdir() if entry.is_dir()]
+    except OSError:
+        return []
+    if skip_dotted:
+        entries = [e for e in entries if not e.name.startswith(".")]
+    return sorted(entries, key=lambda entry: entry.name)
+
+
+def prune_projects(
+    config: Config,
+    projects: Iterable[str],
+    cwd: Path | None = None,
+    dry_run: bool = False,
+) -> list[str]:
     """Remove the named project directories, if emptied. Returns those gone.
 
     A project is only a grouping directory, so one holding no workspace
@@ -211,7 +390,7 @@ def prune_projects(config: Config, projects: Iterable[str]) -> list[str]:
     again. Only the projects a caller has just emptied are considered: an
     empty project directory someone else made is not this command's business.
     """
-    here = Path.cwd().resolve()
+    here = (cwd or Path.cwd()).resolve()
     pruned: list[str] = []
     for name in sorted(set(projects)):
         project = config.root / name
@@ -224,7 +403,8 @@ def prune_projects(config: Config, projects: Iterable[str]) -> list[str]:
         try:
             if any(project.iterdir()):
                 continue
-            project.rmdir()
+            if not dry_run:
+                project.rmdir()
         except OSError:
             continue
         pruned.append(name)
@@ -233,7 +413,13 @@ def prune_projects(config: Config, projects: Iterable[str]) -> list[str]:
 
 def current(config: Config, cwd: Path | None = None) -> Workspace | None:
     """The workspace containing cwd, if any."""
-    name = names.workspace_from_path(cwd or Path.cwd(), config.root)
+    try:
+        here = cwd or Path.cwd()
+    except OSError:
+        # A shell left standing in a directory another `wt rm` removed is
+        # not inside a workspace; it is nowhere.
+        return None
+    name = names.workspace_from_path(here, config.root)
     return Workspace(name, config) if name else None
 
 
@@ -264,3 +450,19 @@ def resolve(
             f"{config.root}"
         )
     return named(config, args[0]), args[1:]
+
+
+def workspace_reference(config: Config, value: str) -> bool:
+    """True when value is shaped like a workspace name rather than a verb arg.
+
+    `wt clone` and `wt git` take free-form arguments that can look exactly
+    like a workspace, so naming one that does not exist used to fall through
+    silently and act on the current workspace instead.
+    """
+    if "/" not in value or value.startswith("-"):
+        return False
+    try:
+        names.normalize_workspace(value, config.project)
+    except WtError:
+        return False
+    return True

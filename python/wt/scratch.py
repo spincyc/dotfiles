@@ -10,11 +10,12 @@ edit someone forgot to commit.
 Each clone excludes `.scratch/` in `.git/info/exclude` rather than in a
 committed `.gitignore`. The convention is `wt`'s, so it costs the cloned
 repository nothing, and the exclusion is what keeps scratch files from
-dirtying a clone and blocking `wt clean`.
+dirtying a clone and blocking `wt sweep`.
 """
 
 import os
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 
 from . import gitcmd
@@ -25,6 +26,9 @@ EXCLUDE_LINE = ".scratch/"
 _EXCLUDE_NOTE = "# wt: transient files live under .scratch"
 # git clean announces each path it removes, or would remove, this way.
 _REMOVAL_PREFIXES = ("Removing ", "Would remove ")
+# The directory entry itself, however git spells it: the caller deletes
+# .scratch on its own terms and would otherwise hear about it twice.
+_SCRATCH_ENTRY = frozenset({NAME, EXCLUDE_LINE})
 
 
 def exclude_file(repo: Path) -> Path | None:
@@ -61,10 +65,26 @@ def excluded(repo: Path) -> bool:
     return any(line.strip() == EXCLUDE_LINE for line in text.splitlines())
 
 
-def ensure_exclude(repo: Path) -> bool:
-    """Exclude .scratch from Git locally. True when the line was added."""
+def _inside(path: Path, root: Path) -> bool:
+    """True when path is root or lies beneath it, symlinks resolved."""
+    try:
+        return path.resolve().is_relative_to(root.resolve())
+    except OSError:
+        return False
+
+
+def ensure_exclude(repo: Path, root: Path | None = None) -> bool:
+    """Exclude .scratch from Git locally. True when the line was added.
+
+    A linked worktree's common directory is the canonical repository it was
+    created from, which can sit anywhere on the disk. Given a root, refuse
+    rather than write there: wt owns the workspace, not every repository a
+    clone inside it happens to point at.
+    """
     path = exclude_file(repo)
     if path is None or excluded(repo):
+        return False
+    if root is not None and not _inside(path, root):
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = (
@@ -104,19 +124,33 @@ def tracked(repo: Path) -> list[str]:
     return listed.splitlines() if listed else []
 
 
-def clean_ignored(repo: Path, dry_run: bool = False) -> list[str]:
-    """Remove every Git-ignored path in the clone, or list what would go.
+def _removal(line: str) -> str | None:
+    """The path in one line of git clean output, if it announces one."""
+    for prefix in _REMOVAL_PREFIXES:
+        if line.startswith(prefix):
+            return line[len(prefix) :]
+    return None
+
+
+def clean_ignored(repo: Path, dry_run: bool = False) -> Iterator[str]:
+    """Yield every Git-ignored path in the clone as it goes, or would go.
 
     Only ignored paths are touched: tracked files and untracked files that
     nothing ignores are exactly the ones that might still be work. Nested
     repositories are left where they are; git skips them without -ff, and
     reaching into one is not this command's business.
+
+    A generator, and read line by line, because git deletes as it announces:
+    a clean that fails halfway has still removed everything it named, and a
+    caller told only about the failure would report nothing gone when files
+    are. The WtError comes after the last path, never instead of it.
     """
-    status, output = gitcmd.read(
+    process = gitcmd.popen(
         repo,
         # Unquoted paths so the report matches the filesystem, and .scratch
         # named outright so a dry run sees the same ignore set as the real
-        # run does after the exclusion is written.
+        # run does after the exclusion is written. Under -X an added pattern
+        # marks its matches ignored, which is what puts .scratch in reach.
         "-c",
         "core.quotePath=false",
         "clean",
@@ -124,15 +158,21 @@ def clean_ignored(repo: Path, dry_run: bool = False) -> list[str]:
         "-e",
         EXCLUDE_LINE,
     )
+    try:
+        for line in process.stdout or ():
+            path = _removal(line.rstrip("\n"))
+            # Only the directory entry is suppressed. A repository tracking
+            # something under .scratch keeps the directory, so git reports
+            # its untracked siblings one by one — and deletes them.
+            if path is not None and path not in _SCRATCH_ENTRY:
+                yield path
+    finally:
+        # An abandoned generator must not leave git running against the
+        # clone, and a killed clean is still worth waiting on.
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.poll() is None:
+            process.kill()
+        status = process.wait()
     if status != 0:
         raise WtError(f"git clean failed in {repo}")
-    removed: list[str] = []
-    for line in output.splitlines():
-        for prefix in _REMOVAL_PREFIXES:
-            if line.startswith(prefix):
-                path = line[len(prefix) :]
-                # .scratch is reported on its own, ignored or not.
-                if path.split("/")[0] != NAME:
-                    removed.append(path)
-                break
-    return removed

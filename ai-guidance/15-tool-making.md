@@ -1,12 +1,16 @@
 # Tool making
 
 Use `tmt` when it is available (Availability, `AI_GUIDANCE.md`). Listed tools
-run as `tools/<id>` without tmt.
+run as `tools/<id>` without tmt. The registry covers those repository checks
+only: a portable command under `bin/`, such as `wt`, stays outside it and
+does not move under `tools/` — it mutates, is not idempotent, and answers no
+single question with byte-stable output.
 
-This document does not apply in a `wt` agent workspace, which `WT_WORKSPACE`
-identifies: record no candidates and scaffold no registry there. A cloned
-repository inside a workspace keeps its own `tmt.json` contract when it has
-one, and work on that repository follows this document normally.
+This document does not apply in a `wt` agent workspace — a directory under
+the `wt` workspace root, as `10-journal.md` defines it: record no candidates
+and scaffold no registry there. A cloned repository inside a workspace keeps
+its own `tmt.json` contract when it has one, and work on that repository
+follows this document normally.
 
 - Before writing any script, read the repository's `tmt.json` if present and
   prefer a listed tool over re-deriving. Session-start `tmt context` output
