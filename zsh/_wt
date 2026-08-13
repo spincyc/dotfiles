@@ -1,0 +1,73 @@
+#compdef wt wtcd
+# Completion for wt. The workspace list comes from `wt ls -q` rather than
+# from a hard-coded table, so only the verb list can ever drift from the
+# tool; `wt help` is the place to check it against.
+
+_wt_workspaces() {
+  local -a found
+  found=(${(f)"$(wt ls -q 2>/dev/null)"})
+  (( $#found )) && _describe -t workspaces 'workspace' found
+}
+
+_wt() {
+  local -a verbs
+  verbs=(
+    'ls:list workspaces and the repos they hold'
+    'new:create a workspace without launching an agent'
+    'path:print a workspace directory'
+    'pwd:print the root of the workspace you are in'
+    'clone:clone a repository into a workspace'
+    'branch:print the workspace branch'
+    'git:run git in every repo of the workspace'
+    'exec:run any command in every repo'
+    'status:per-repo branch, upstream, cleanliness'
+    'log:the commits of this line of work'
+    'fetch:git fetch --prune in every repo'
+    'sync:fetch, then rebase onto the default branch'
+    'push:publish the workspace branch where there is work'
+    'agents:show occupied and free agent slots'
+    'check:sanity-check the environment and layout'
+    'tidy:delete .scratch and Git-ignored files'
+    'sweep:remove workspaces whose work is all pushed'
+    'rm:remove a workspace holding no unsaved work'
+    'help:show the usage message'
+    'claude:launch claude in a workspace'
+    'codex:launch codex in a workspace'
+  )
+
+  if (( CURRENT == 2 )); then
+    # A bare slug is a launch, so both are valid here. Completing the
+    # workspaces is the point: it is the cheapest guard against a typo
+    # quietly creating a second workspace and starting an agent in it.
+    _describe -t verbs 'verb' verbs
+    _wt_workspaces
+    return
+  fi
+
+  case ${words[2]} in
+    claude|codex|path|branch|status|log|fetch|sync|push|tidy|sweep|rm|new)
+      (( CURRENT == 3 )) && _wt_workspaces
+      ;;
+    git|exec|clone)
+      # -w names the workspace for the verbs whose own arguments look like
+      # one; everything else is the command or the repository.
+      if [[ ${words[CURRENT-1]} == (-w|--workspace) ]]; then
+        _wt_workspaces
+      else
+        _default
+      fi
+      ;;
+    *)
+      _default
+      ;;
+  esac
+}
+
+_wtcd() {
+  _wt_workspaces
+}
+
+case ${service} in
+  wtcd) _wtcd "$@" ;;
+  *) _wt "$@" ;;
+esac

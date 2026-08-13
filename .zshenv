@@ -5,10 +5,9 @@ typeset -U path PATH
 path=("$HOME/.local/bin" $path)
 
 # Append this repository's own bin directory so a tool added under bin/ is on
-# PATH in the next shell, with no reinstall; it still gets a managed_links entry, so
-# non-Zsh shells find it too. The
-# path is resolved from this file through its symlink, so the checkout can
-# live anywhere; installed links keep bin/ tools working outside Zsh too.
+# PATH in the next shell with no reinstall. It still gets a managed_links
+# entry, so non-Zsh shells find it too. The path is resolved from this file
+# through its symlink, so the checkout can live anywhere.
 # Appended, not prepended: nothing here should shadow a system command.
 dotfiles_root=${${(%):-%N}:A:h}
 [[ -d $dotfiles_root/bin ]] && path=($path $dotfiles_root/bin)

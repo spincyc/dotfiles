@@ -302,9 +302,19 @@ current directory belongs to and failing outside `WT_ROOT`. `new`, `sweep`
 and `tidy` never infer: they take a workspace name or none at all, `sweep`
 and `tidy` fail on a name that does not exist, and `wt sweep` inside a
 workspace still considers all of them, keeping the one you are standing in.
-`wt` cannot change the calling shell's directory, so use
-`cd "$(wt path telos/agent-sync)"`, or `cd "$(wt pwd)"` to climb back out of
-a clone.
+`wt` cannot change the calling shell's directory, so `.zshrc` defines `wtcd`
+over it: `wtcd telos/agent-sync` goes to that workspace and a bare `wtcd`
+climbs to the top of the one you are already in, over `cd "$(wt path ...)"`
+and `cd "$(wt pwd)"`. It is a separate name on purpose — shadowing `wt` with
+a shell function would break `command -v wt`, non-interactive callers, and
+the workspace guidance that tells agents to invoke `wt` directly.
+
+Zsh completion lives in `zsh/_wt`, which `.zshrc` puts on `fpath` from this
+checkout, so it needs no reinstall and has no `managed_links` entry:
+completions are Zsh-only, unlike the `bin/` tools. It completes the verbs
+and, more usefully, existing workspace names taken live from `wt ls -q` — a
+mistyped slug is otherwise a new workspace, and a launch will create it and
+start an agent in it without complaint.
 
 `--force` (`-f`) and `--dry-run` (`-n`) are read from wherever in the
 arguments they were typed, so `wt rm telos/demo -f` works as readily as

@@ -207,6 +207,8 @@ def check_profile() -> None:
     run(["sh", "-n", "install.sh"])
     run(["zsh", "-n", ".zshenv"])
     run(["zsh", "-n", ".zshrc"])
+    for completion in sorted(Path("zsh").glob("_*")):
+        run(["zsh", "-n", str(completion)])
 
     tmux_socket = f"dotfiles-check-{os.getpid()}"
     run(
