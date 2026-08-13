@@ -147,6 +147,16 @@ def unpushed(repo: Path, branch: str) -> int | None:
     return _count(repo, branch, "--not", "--remotes")
 
 
+def has_commits(repo: Path) -> bool:
+    """True when HEAD resolves to a commit.
+
+    A clone of a repository that has none yet is a normal state — it is what
+    `gh repo create` leaves behind — and it is not the same as a clone whose
+    default branch could not be determined.
+    """
+    return _verifies(repo, "HEAD")
+
+
 def _verifies(repo: Path, revision: str) -> bool:
     return gitcmd.value(
         repo, "rev-parse", "--verify", "--quiet", revision

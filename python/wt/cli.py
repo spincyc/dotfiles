@@ -473,6 +473,12 @@ def cmd_sync(config: Config, args: list[str]) -> int:
             _narrate(f"wt: fetch failed in {name}")
             status = 1
             continue
+        if not repos.has_commits(repo):
+            # Nothing to rebase, and nothing wrong: a clone of an empty
+            # repository used to be counted as a skip, which made the whole
+            # workspace exit non-zero forever.
+            print(f"skipped  {name}  no commits yet")
+            continue
         if _mid_rebase(repo):
             # Reported before the dirty test, which would otherwise call an
             # unfinished rebase "uncommitted changes" and hide it entirely.
@@ -586,6 +592,8 @@ def cmd_log(config: Config, args: list[str]) -> int:
     status = 0
     for name in names:
         repo = workspace.path / name
+        if not repos.has_commits(repo):
+            continue
         span = repos.line_of_work(repo, workspace.branch)
         if span is None:
             _narrate(f"wt: {name} has no default branch on origin; "

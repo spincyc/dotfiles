@@ -268,8 +268,36 @@ def _workspace(workspace: workspaces.Workspace) -> list[CheckResult]:
     return results
 
 
-def _layout(config: Config) -> list[CheckResult]:
+def _projects(config: Config) -> list[CheckResult]:
+    """Report a project directory wt cannot read.
+
+    `listing` tolerates an unreadable directory by returning nothing, which
+    is right for a verb that must not crash and wrong as a report: an
+    unreadable project made `wt ls` say "No workspaces" and `wt check` pass,
+    while the workspaces under it were simply invisible.
+    """
     results: list[CheckResult] = []
+    try:
+        entries = sorted(config.root.iterdir(), key=lambda item: item.name)
+    except OSError:
+        return results
+    for entry in entries:
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        try:
+            list(entry.iterdir())
+        except OSError as error:
+            results.append(
+                CheckResult(
+                    Level.FAIL,
+                    f"project {entry.name} cannot be read: {error.strerror}",
+                )
+            )
+    return results
+
+
+def _layout(config: Config) -> list[CheckResult]:
+    results: list[CheckResult] = _projects(config)
     try:
         found = workspaces.listing(config)
     except OSError as error:

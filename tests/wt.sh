@@ -966,6 +966,35 @@ assert_contains "$(wt_run rm naming/a..b)" 'removed'
 # A slug git accepts under the prefix is not refused for standing alone.
 wt_run new naming/HEAD >/dev/null || fail "feature/HEAD is a legal branch"
 
+printf '# an empty clone is a benign skip, not a permanent failure\n'
+wt_root="$test_root/emptyclone"
+mkdir -p -- "$origins/spincyc/unborn"
+git init --quiet --bare -- "$origins/spincyc/unborn"
+wt_run clone -w ec/work "file://$origins/spincyc/unborn" \
+  "file://$origins/spincyc/alpha" >/dev/null 2>&1 ||
+  fail "clone of an empty origin failed"
+ec_sync=$(wt_run sync ec/work 2>/dev/null) ||
+  fail "an empty clone made the whole sync fail"
+assert_contains "$ec_sync" 'skipped  spincyc/unborn  no commits yet'
+assert_contains "$ec_sync" 'synced   spincyc/alpha'
+wt_run log ec/work >/dev/null || fail "an empty clone made log fail"
+wt_root="$work"
+
+printf '# an unreadable project directory is reported, not read as empty\n'
+wt_root="$test_root/unreadableproject"
+wt_run new up/work >/dev/null 2>&1
+chmod 000 "$wt_root/up"
+up_check=$(wt_run check 2>&1) && fail "check passed over an unreadable project"
+assert_contains "$up_check" 'project up cannot be read'
+chmod 755 "$wt_root/up"
+wt_run check >/dev/null 2>&1 || fail "check failed on a healthy root"
+wt_root="$work"
+
+printf '# not knowing which workspace is a usage error, not a missing one\n'
+assert_status 1 wt_run path nope/nope
+assert_status 2 wt_run rm
+(cd / && assert_status 2 wt_run path)
+
 printf '# a commit reachable only from a local tag is unsaved work\n'
 wt_root="$test_root/tagged"
 wt_run clone -w tag/work "file://$origins/spincyc/alpha" >/dev/null 2>&1 ||

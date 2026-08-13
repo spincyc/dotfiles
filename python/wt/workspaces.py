@@ -20,6 +20,7 @@ from .errors import (
     PartlyRemoved,
     RemovalRefused,
     UnsavedWorkError,
+    UsageError,
     WtError,
 )
 
@@ -484,7 +485,10 @@ def resolve(
         return here, args
 
     if not args or args[0] == "--" or args[0].startswith("-"):
-        raise WtError(
+        # Not knowing which workspace to act on is a usage problem, the same
+        # as giving a verb too many arguments. Naming one that is not there
+        # is a different fact and keeps its own exit code.
+        raise UsageError(
             f"no workspace given and {cwd or Path.cwd()} is not inside "
             f"{config.root}"
         )
