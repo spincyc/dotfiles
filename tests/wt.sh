@@ -966,6 +966,41 @@ assert_contains "$(wt_run rm naming/a..b)" 'removed'
 # A slug git accepts under the prefix is not refused for standing alone.
 wt_run new naming/HEAD >/dev/null || fail "feature/HEAD is a legal branch"
 
+printf '# clone -o files a repository under the owner you name\n'
+wt_root="$test_root/owner"
+mkdir -p -- "$test_root/mirror"
+git clone --quiet "file://$origins/spincyc/alpha" "$test_root/mirror/alpha"
+wt_run clone -w ow/work "$test_root/mirror/alpha" >/dev/null 2>&1 ||
+  fail "clone from a local path failed"
+[ -d "$wt_root/ow/work/mirror/alpha" ] ||
+  fail "the default owner is the parent directory"
+wt_run clone -w ow/named -o spincyc "$test_root/mirror/alpha" >/dev/null 2>&1 ||
+  fail "clone -o failed"
+[ -d "$wt_root/ow/named/spincyc/alpha" ] ||
+  fail "-o did not file the clone under the named owner"
+if wt_run clone -w ow/bad -o 'bad owner' "$test_root/mirror/alpha" \
+  >/dev/null 2>&1; then
+  fail "-o accepted an owner that is not a usable path component"
+fi
+if wt_run clone -w ow/many -o spincyc "$test_root/mirror/alpha" \
+  "file://$origins/spincyc/beta" >/dev/null 2>&1; then
+  fail "-o accepted more than one repository"
+fi
+wt_root="$work"
+
+printf '# status -q is one tab-separated line per repository\n'
+wt_root="$test_root/porcelain"
+wt_run clone -w pc/work "file://$origins/spincyc/alpha" \
+  "file://$origins/spincyc/beta" >/dev/null 2>&1 ||
+  fail "clone into the porcelain workspace failed"
+porcelain=$(wt_run status -q pc/work)
+# Field by field, because the human form aligns on widths a long name breaks.
+assert_matches "$porcelain" '^pc/work	spincyc/alpha	feature/work	origin/main	clean	'
+[ "$(printf '%s\n' "$porcelain" | wc -l)" -eq 2 ] ||
+  fail "status -q printed something other than one line per repo"
+assert_missing "$porcelain" 'ahead 0'
+wt_root="$work"
+
 printf '# an empty clone is a benign skip, not a permanent failure\n'
 wt_root="$test_root/emptyclone"
 mkdir -p -- "$origins/spincyc/unborn"

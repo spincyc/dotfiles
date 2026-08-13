@@ -50,6 +50,19 @@ def _local_path(spec: str) -> str:
     return os.path.normpath(os.path.abspath(expanded))
 
 
+def with_owner(spec: CloneSpec, owner: str) -> CloneSpec:
+    """The same source, filed under a different owner.
+
+    The owner is otherwise the second-to-last path component, which is right
+    for a forge spec and a guess for a local path: `~/mirror/telos` and
+    `~/git/spincyc/telos` are the same repository filed under two owners,
+    and only the caller knows which one they meant.
+    """
+    if not is_safe_component(owner):
+        raise WtError(f"not a usable owner: {owner}")
+    return CloneSpec(owner=owner, repo=spec.repo, url=spec.url)
+
+
 def parse(spec: str) -> CloneSpec:
     """Read a local path, owner/repo, https://host/owner/repo(.git) or SSH.
 

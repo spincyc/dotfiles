@@ -49,6 +49,8 @@ a hostname.
 - Keep `python/` on the standard library, and keep each package importable and
   side-effect free: only its CLI module prints or exits, so the pieces stay
   reusable from other scripts.
+- Python 3.11 is the floor `python/` requires (`enum.StrEnum`). Raise it only
+  deliberately, and say so here when you do.
 - When adding a portable core file, update `managed_links` and `README.md`.
 - Keep every desktop destination in a strict manifest. Deploy desktop payloads
   as regular files only after exact profile-version and schema checks; never

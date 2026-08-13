@@ -53,6 +53,8 @@ _wt() {
       # one; everything else is the command or the repository.
       if [[ ${words[CURRENT-1]} == (-w|--workspace) ]]; then
         _wt_workspaces
+      elif [[ ${words[CURRENT-1]} == (-o|--owner) ]]; then
+        _message 'owner directory'
       else
         _default
       fi

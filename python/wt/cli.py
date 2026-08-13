@@ -45,13 +45,15 @@ Verbs:
   new [--force] [<workspace>]     Create a workspace, do not launch an agent
   path [<workspace>]              Print a workspace directory
   pwd                             Print the root of the workspace you are in
-  clone [-w <workspace>] <repo>.. Clone owner/repo, a URL, or a local path to
-                                  <owner>/<repo>, on the workspace branch
+  clone [-w <ws>] [-o <owner>]    Clone owner/repo, a URL, or a local path to
+        <repo>...                 <owner>/<repo>, on the workspace branch;
+                                  -o files one clone under a chosen owner
   branch [<workspace>]            Print the workspace branch
   git [-w <workspace>] [--] <a>.. Run git in every repo of the workspace
   exec [-w <workspace>] [--] <c>. Run any command in every repo, with
                                   $WT_REPO naming each one
-  status [<workspace>]            Per-repo branch, upstream, cleanliness
+  status [-q] [<workspace>]       Per-repo branch, upstream, cleanliness;
+                                  -q is one tab-separated line per repo
   log [<workspace>]               The commits of this line of work, per repo
   fetch [<workspace>]             git fetch --prune in every repo
   sync [<workspace>]              Fetch, then rebase onto the default branch
@@ -280,13 +282,20 @@ def cmd_branch(config: Config, args: list[str]) -> int:
 
 def cmd_clone(config: Config, args: list[str]) -> int:
     named, args = _take_option(args, "-w", "--workspace")
+    owner, args = _take_option(args, "-o", "--owner")
     if named is not None:
         workspace, rest = workspaces.named(config, named), args
     else:
         workspace, rest = workspaces.resolve(config, args)
     if not rest:
         raise UsageError("clone needs at least one repository")
+    if owner is not None and len(rest) > 1:
+        # One owner cannot describe several repositories, and silently
+        # filing them all under it would be worse than refusing.
+        raise UsageError("-o takes one repository at a time")
     specs = [clone.parse(item) for item in rest]
+    if owner is not None:
+        specs = [clone.with_owner(spec, owner) for spec in specs]
     if workspace.create():
         print(f"created  {workspace.path}", file=sys.stderr)
     for spec in specs:
@@ -411,12 +420,32 @@ def _fan_out_target(
 
 
 def cmd_status(config: Config, args: list[str]) -> int:
+    porcelain, args = _take_flag(args, "-q", "--porcelain")
     workspace = _only_workspace(config, args, "status")
     statuses = workspace.statuses()
     if not statuses:
-        print(f"No repositories in {workspace.path}")
+        if not porcelain:
+            print(f"No repositories in {workspace.path}")
         return 0
     for status in statuses:
+        if porcelain:
+            # Tab-separated and column-free: the human form aligns on fixed
+            # widths that a long owner/repo name pushes out, and there was
+            # no shape a script could read at all.
+            print(
+                "\t".join(
+                    (
+                        workspace.name,
+                        status.name,
+                        status.branch,
+                        status.upstream or "",
+                        status.state,
+                        "" if status.ahead is None else str(status.ahead),
+                        "" if status.behind is None else str(status.behind),
+                    )
+                )
+            )
+            continue
         _print_repo(status)
         for line in repos.changes(status.path) or []:
             print(f"  {line}")

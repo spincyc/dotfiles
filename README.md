@@ -266,9 +266,11 @@ wt ls                                   # every workspace and the repos it holds
 wt ls -q                                # bare names, one per line, for scripts
 wt clone telos/agent-sync spincyc/telos # cloned onto feature/agent-sync
 wt clone -w telos/agent-sync ~/git/spincyc/telos   # or from a path on this disk
+wt clone -w telos/agent-sync -o spincyc ~/mirror/telos  # naming the owner
 wt pwd                                  # the workspace holding this directory
 wt branch telos/agent-sync              # the workspace branch
 wt status telos/agent-sync              # branch, upstream, cleanliness, ahead/behind
+wt status -q telos/agent-sync           # one tab-separated line per repo
 wt log telos/agent-sync                 # the commits of this line of work
 wt git telos/agent-sync -- log --oneline -3
 wt exec telos/agent-sync -- rg -n TODO  # any command, in every clone
@@ -392,6 +394,8 @@ into nothing else — a shell you opened yourself has none of them:
 | `WT_BRANCH` | The workspace branch, for `git push -u origin "$WT_BRANCH"` |
 | `WT_AGENT_SLOT` | Which of `WT_MAX_AGENTS` slots this agent holds |
 | `AIQ_DISABLE` | Set to `1`: a workspace keeps no work ledger |
+
+The package needs Python 3.11 or newer (`enum.StrEnum`).
 
 `bin/wt` is a thin entry point over the `wt` package in `python/`, which the
 installer links to `~/.local/lib/python/wt`. `.zshenv` puts that directory on
