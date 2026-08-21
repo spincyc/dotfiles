@@ -17,7 +17,7 @@ DEFAULT_MAX_AGENTS = 4
 # destructive verb into an unbounded walk.
 MAX_AGENTS_CEILING = 1024
 DEFAULT_FORGE = "https://github.com"
-KNOWN_AGENTS = ("claude", "codex")
+KNOWN_AGENTS = ("claude", "codex", "droid")
 
 
 @dataclass(frozen=True)

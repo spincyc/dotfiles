@@ -201,6 +201,7 @@ checkouts.
 ```sh
 wt claude telos/agent-sync      # create or reuse the workspace, run claude in it
 wt codex telos/agent-sync       # the same workspace, a different agent
+wt droid telos/agent-sync       # and a third
 wt agent-sync                   # a bare slug takes $WT_PROJECT
 ```
 
@@ -227,7 +228,8 @@ say which clone holds the work.
 
 Creating a workspace writes `AGENTS.md` there, with `CLAUDE.md` and
 `GEMINI.md` deferring to it, so every agent is told to clone into that
-directory owner-prefixed and to commit on the workspace branch. The files are
+directory owner-prefixed and to commit on the workspace branch. `droid` reads
+`AGENTS.md` itself and needs no pointer of its own. The files are
 written once; `wt new --force [<workspace>]` rewrites them after the template
 changes, so an existing workspace keeps the instructions it was created with
 until then.

@@ -33,6 +33,7 @@ _wt() {
     'help:show the usage message'
     'claude:launch claude in a workspace'
     'codex:launch codex in a workspace'
+    'droid:launch droid in a workspace'
   )
 
   if (( CURRENT == 2 )); then
@@ -45,7 +46,7 @@ _wt() {
   fi
 
   case ${words[2]} in
-    claude|codex|path|branch|status|log|fetch|sync|push|tidy|sweep|rm|new)
+    claude|codex|droid|path|branch|status|log|fetch|sync|push|tidy|sweep|rm|new)
       (( CURRENT == 3 )) && _wt_workspaces
       ;;
     git|exec|clone)

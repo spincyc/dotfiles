@@ -199,9 +199,9 @@ EOF
 chmod 755 -- "$fake_bin/fake-agent"
 
 # Stand-ins for the installed agents. Without them the suite passes only on a
-# machine that happens to have a real claude or codex, and `wt check` fails on
-# a clean CI box for a reason that has nothing to do with wt.
-for agent_name in claude codex; do
+# machine that happens to have a real claude, codex, or droid, and `wt check`
+# fails on a clean CI box for a reason that has nothing to do with wt.
+for agent_name in claude codex droid; do
   # A plain copy is enough now that the script reports its own $0: identical
   # copies that said nothing made `wt claude X` and `wt X` indistinguishable,
   # so the dispatch test could not fail.
@@ -504,6 +504,7 @@ assert_contains "$named_out" 'agent=claude'
 assert_contains "$named_out" 'workspace=telos/demo'
 assert_contains "$named_out" "cwd=$work/telos/demo"
 assert_contains "$(wt_run codex telos/demo 2>/dev/null)" 'agent=codex'
+assert_contains "$(wt_run droid telos/demo 2>/dev/null)" 'agent=droid'
 assert_contains "$(wt_run telos/demo 2>/dev/null)" 'agent=fake-agent'
 
 printf '# the launched agent keeps no work ledger\n'

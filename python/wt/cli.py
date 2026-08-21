@@ -27,12 +27,13 @@ from .errors import (
 EX_TEMPFAIL = 75
 
 USAGE = """\
-Usage: wt [claude|codex] [<project>/]<slug> [agent-args...]
+Usage: wt [claude|codex|droid] [<project>/]<slug> [agent-args...]
        wt <verb> [<workspace>] [args...]
 
 Launch:
   wt claude telos/agent-sync      Create or reuse the workspace, then run
-  wt codex telos/agent-sync       the agent with it as the working directory
+  wt codex telos/agent-sync       the named agent with it as the working
+  wt droid telos/agent-sync       directory
   wt telos/agent-sync             Use $WT_AGENT (default claude)
   wt agent-sync                   A bare slug takes $WT_PROJECT
 
