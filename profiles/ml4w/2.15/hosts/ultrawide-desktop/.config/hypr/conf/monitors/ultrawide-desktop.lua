@@ -31,80 +31,131 @@ hl.monitor({
 -- eDP-1 *enabled* at a 0x0 mode positioned at 0,0 -- exactly on top of DP-3's
 -- origin. Clients then see a zero-size wl_output covering the ultrawide's
 -- corner. Firefox constrains its menu popups to that empty rectangle, so
--- dropdowns stop rendering entirely.
+-- dropdowns stop rendering entirely; disabling the output restores them.
 -- 2026-08-12: verified on Hyprland 0.56.2 with Firefox 153.0.4.
 --
--- The panel is therefore parked past the right edge of every other output,
--- where a zero-size output overlaps nothing. `position = "auto"` is not
--- enough, because the placement Hyprland picks for the undriven output is
--- 0,0; the explicit position has to be re-applied whenever the lid moves or
--- the other outputs change, which is what the reconcile below is for.
+-- Hyprland reaches the same state when it starts with the lid already shut,
+-- so the state is reconciled on startup and on monitor hotplug, not only on
+-- the lid transition. The built-in panel is never disabled while it is the
+-- only monitor left: removing the last output puts Hyprland in its unsafe
+-- state, which is a worse failure than the one being fixed.
 --
--- 2026-08-31: parking replaced disabling the output, which fixed the popups
--- but broke X11 outright. Disabling destroys the panel's wl_output global,
--- and the startup reconcile did that while Xwayland was binding the registry:
--- Xwayland died with "wl_registry error 0: global wl_output (73) is
--- unavailable". Hyprland never respawns it, yet keeps /tmp/.X11-unix/X0
--- listening and unserved, so every later X11 client blocked forever in
--- connect(). Remmina hung with no window at all, because FreeRDP calls
--- XOpenDisplay() while Remmina loads its plugins, before any UI exists.
--- Keeping the output alive avoids that class of failure entirely.
+-- 2026-08-31: no reconcile runs until Xwayland has settled. Disabling an
+-- output destroys its wl_output global, and destroying one while Xwayland
+-- binds the registry kills Xwayland: "wl_registry error 0: global wl_output
+-- (73) is unavailable". Hyprland never respawns it, yet keeps
+-- /tmp/.X11-unix/X0 listening and unserved, so every X11 client afterwards
+-- blocks forever in connect() -- Remmina hung with no window at all, because
+-- FreeRDP calls XOpenDisplay() while Remmina loads its plugins. Only the bind
+-- window is dangerous: a running Xwayland handles output removal normally, and
+-- one that starts later never sees the panel.
+--
+-- Parking the panel beside the layout instead of disabling it keeps the output
+-- alive, and was rejected the same day: an enabled output behind a shut lid
+-- claims a workspace, so windows open on a screen that cannot be seen.
 -------------------------------------------------------
 
 local BUILT_IN = "eDP-1"
 
--- hl.get_monitors() reports enabled monitors only, so a disabled built-in
--- panel is absent rather than flagged.
+-- Two consecutive sightings put Xwayland's registry bind safely in the past.
+-- The ceiling covers a session where no X client ever triggers Hyprland's lazy
+-- Xwayland start, and costs only a few seconds of the state being unreconciled.
+local XWAYLAND_POLL_MS = 500
+local XWAYLAND_GRACE_MS = 15000
+
+local function lid_is_closed()
+    -- Path component varies by firmware (LID, LID0, ...), so glob it.
+    local probe = io.popen("cat /proc/acpi/button/lid/*/state 2>/dev/null")
+    if not probe then
+        return false
+    end
+    local state = probe:read("*a") or ""
+    probe:close()
+    return state:match("closed") ~= nil
+end
+
+-- hl.get_monitors() reports enabled monitors only, so absence means disabled.
 local function survey()
-    local built_in, right_edge = nil, 0
+    local built_in_enabled, others = false, 0
     local monitors = hl.get_monitors() or {}
     for i = 1, #monitors do
-        local monitor = monitors[i]
-        if monitor.name == BUILT_IN then
-            built_in = monitor
+        if monitors[i].name == BUILT_IN then
+            built_in_enabled = true
         else
-            -- Layout coordinates are logical pixels, monitor.width is physical.
-            local scale = monitor.scale or 1
-            local edge = monitor.x + math.floor(monitor.width / scale + 0.5)
-            if edge > right_edge then
-                right_edge = edge
-            end
+            others = others + 1
         end
     end
-    return built_in, right_edge
+    return built_in_enabled, others
 end
 
 local reconciling = false
+local xwayland_settled = false
 
 local function reconcile()
-    if reconciling then
+    if reconciling or not xwayland_settled then
         return
     end
     reconciling = true
 
-    local built_in, right_edge = survey()
+    local built_in_enabled, others = survey()
+    local want_enabled = not (lid_is_closed() and others > 0)
 
-    -- `disabled = false` states the intent rather than repairing anything: a
-    -- panel that an earlier revision of this file disabled returns at the next
-    -- Hyprland start, once no rule disables it.
-    if not built_in or built_in.x ~= right_edge or built_in.y ~= 0 then
-        hl.monitor({
-            output = BUILT_IN,
-            mode = "preferred",
-            position = string.format("%dx0", right_edge),
-            scale = 1,
-            disabled = false,
-        })
+    if want_enabled ~= built_in_enabled then
+        if want_enabled then
+            hl.monitor({
+                output = BUILT_IN,
+                mode = "preferred",
+                position = "auto",
+                scale = 1,
+            })
+        else
+            hl.monitor({ output = BUILT_IN, disabled = true })
+        end
     end
 
     reconciling = false
 end
 
-hl.on("hyprland.start", reconcile)
+local function xwayland_is_running()
+    local probe = io.popen("pgrep -x Xwayland >/dev/null 2>&1 && echo running")
+    if not probe then
+        return false
+    end
+    local answer = probe:read("*a") or ""
+    probe:close()
+    return answer:match("running") ~= nil
+end
+
+-- Holds the startup pass, and the eDP-1 monitor.added that races it, away from
+-- Xwayland's registry bind. Reconciling stays immediate once the gate opens.
+local function await_xwayland()
+    if xwayland_settled then
+        return
+    end
+
+    local waited, seen_running = 0, false
+    local gate
+    gate = hl.timer(function()
+        waited = waited + XWAYLAND_POLL_MS
+        local running = xwayland_is_running()
+        if (running and seen_running) or waited >= XWAYLAND_GRACE_MS then
+            gate:set_enabled(false)
+            xwayland_settled = true
+            reconcile()
+        else
+            seen_running = running
+        end
+    end, { timeout = XWAYLAND_POLL_MS, type = "repeat" })
+end
+
+-- A reload re-executes this file without re-firing hyprland.start, so the gate
+-- has to reopen on config.reloaded too.
+hl.on("hyprland.start", await_xwayland)
+hl.on("config.reloaded", await_xwayland)
 hl.on("monitor.added", reconcile)
 hl.on("monitor.removed", reconcile)
 
 hl.bind("switch:on:Lid Switch", reconcile,
-    { locked = true, description = "Park the built-in panel when the lid closes" })
+    { locked = true, description = "Disable the built-in panel when the lid closes" })
 hl.bind("switch:off:Lid Switch", reconcile,
-    { locked = true, description = "Reposition the built-in panel when the lid opens" })
+    { locked = true, description = "Restore the built-in panel when the lid opens" })
