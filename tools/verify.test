@@ -9,10 +9,31 @@ tool="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/verify"
 
 # Check selection runs a cheap subset and passes on the current tree.
 "$tool" --only bootstrap_budget guidance_index bootstrap_files \
-  guidance_crossrefs core_recovery_contract >/dev/null
+  guidance_crossrefs core_recovery_contract relay_protocol >/dev/null
 
 # Unknown check names fail with a diagnostic.
 if "$tool" --only no_such_check >/dev/null 2>&1; then
   echo "expected unknown check to fail" >&2
+  exit 1
+fi
+
+# The relay contract check actually fails on a document missing a section.
+stand_in="$(mktemp)"
+trap 'rm -f -- "$stand_in"' EXIT
+printf 'Version `relay-v1`.\n\n## Roles\n' >"$stand_in"
+if RELAY_PROTOCOL_PATH="$stand_in" "$tool" --only relay_protocol >/dev/null 2>&1
+then
+  echo "expected relay_protocol to fail on an incomplete document" >&2
+  exit 1
+fi
+
+# And on a document with every section but no version declaration.
+printf '## %s\n' Roles Authorization Preconditions "Channel layout" \
+  "Turn file format" "Handoff line" "Context boundary" \
+  "Turn allocation and the single-writer rule" "Planner rules" \
+  "Executor rules" "Blocked channel" Recovery >"$stand_in"
+if RELAY_PROTOCOL_PATH="$stand_in" "$tool" --only relay_protocol >/dev/null 2>&1
+then
+  echo "expected relay_protocol to fail without a version declaration" >&2
   exit 1
 fi

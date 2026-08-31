@@ -20,6 +20,8 @@ opt-in desktop overlays:
 - `AI_GUIDANCE.md`, `ai-guidance/`, and the bootstrap entry points
   (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`):
   the guidance root; bootstrap files defer to `AI_GUIDANCE.md`.
+- `relay/PROTOCOL.md`: the git-channel handoff contract between a planning
+  agent and an executing agent; outside the numbered loader.
 - `tools/`, `Makefile`: repository verification; `make verify` is the
   authoritative check battery.
 - `claude/settings.json`: seed for `~/.claude/settings.json`, copied only
@@ -70,9 +72,9 @@ a hostname.
 Run the smallest relevant checks; `make verify` is the authoritative
 repository-wide battery: syntax and tmux checks, temp-home install,
 Arch-package-list, bootstrap budget, bootstrap-file, cross-reference,
-index-parity, core-recovery-contract, tool-registry (`tmt check`),
-journal-artifact, Python byte-compile, and the `tests/wt.sh` and
-`tests/wt_unit.py` checks.
+index-parity, core-recovery-contract, relay-contract, tool-registry
+(`tmt check`), journal-artifact, Python byte-compile, and the `tests/wt.sh`
+and `tests/wt_unit.py` checks.
 `tools/verify --only CHECK ...` runs named checks;
 `make verify-guidance` is the documentation-only subset
 (`35-guidance-maintenance.md`). The battery does not cover the isolated

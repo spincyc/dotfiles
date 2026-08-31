@@ -23,4 +23,4 @@ verify: sanity-check
 
 verify-guidance:
 	./tools/verify --only bootstrap_budget bootstrap_files guidance_crossrefs \
-	  guidance_index core_recovery_contract
+	  guidance_index core_recovery_contract relay_protocol
