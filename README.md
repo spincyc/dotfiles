@@ -164,13 +164,17 @@ removes the random-wallpaper action, disables Kitty's cursor trail, pins Kitty's
 two green palette slots so a generated low-contrast green cannot hide added
 lines in `git diff`, and keeps machine-specific monitor and binding selections
 in the named host layer.
-That host layer specifically selects built-in `eDP-1`, ultrawide `DP-3` at
-`5120x1440@239.76Hz`, and the `tpacpi::kbd_backlight` device. Review it before
-using the profile on different hardware.
+That host layer specifically selects built-in `eDP-1`, the ultrawide by
+description (`desc:Samsung Electric Company Odyssey G95C`) at
+`5120x1440@239.76Hz`, and the `tpacpi::kbd_backlight` device. The ultrawide is
+matched on its description rather than its DisplayPort connector name because
+the connector re-enumerates across sessions, and the panel is pinned at
+`5120x0` so it always sits to the right of the ultrawide at `0x0`. Review it
+before using the profile on different hardware.
 
 It also handles clamshell operation. With the lid shut, Hyprland stops driving
 the built-in panel but leaves `eDP-1` enabled at a `0x0` mode positioned at
-`0,0`, on top of `DP-3`'s origin. Clients see a zero-size output covering the
+`0,0`, on top of the ultrawide's origin. Clients see a zero-size output covering the
 ultrawide's corner, and Firefox constrains its menu popups to that empty
 rectangle, so dropdown menus stop rendering entirely. The host monitor variant
 therefore disables `eDP-1` outright while the lid is closed and restores it on

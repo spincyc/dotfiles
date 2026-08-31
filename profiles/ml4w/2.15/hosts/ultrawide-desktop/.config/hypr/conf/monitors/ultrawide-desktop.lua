@@ -3,6 +3,20 @@
 -- name: "ultrawide-desktop"
 -------------------------------------------------------
 
+local BUILT_IN = "eDP-1"
+
+-- The ultrawide is matched on its description because its DisplayPort
+-- connector re-enumerates across sessions -- DP-3 became DP-1 on 2026-08-31 --
+-- which silently retires a rule pinned to the connector name and drops the
+-- display onto the fallback rule below.
+local ULTRAWIDE = "desc:Samsung Electric Company Odyssey G95C"
+
+-- Both positions are pinned rather than left to "auto" so the arrangement can
+-- neither depend on the order the rules are applied in nor put the panel on
+-- the ultrawide's origin. 5120 is the ultrawide's own width.
+local ULTRAWIDE_POSITION = "0x0"
+local BUILT_IN_POSITION = "5120x0"
+
 hl.monitor({
     output = "",
     mode = "preferred",
@@ -11,16 +25,16 @@ hl.monitor({
 })
 
 hl.monitor({
-    output = "eDP-1",
-    mode = "preferred",
-    position = "auto",
+    output = ULTRAWIDE,
+    mode = "5120x1440@239.76",
+    position = ULTRAWIDE_POSITION,
     scale = 1,
 })
 
 hl.monitor({
-    output = "DP-3",
-    mode = "5120x1440@239.76",
-    position = "auto",
+    output = BUILT_IN,
+    mode = "preferred",
+    position = BUILT_IN_POSITION,
     scale = 1,
 })
 
@@ -28,8 +42,8 @@ hl.monitor({
 -- Clamshell handling
 --
 -- With the lid shut Hyprland stops driving the built-in panel but leaves
--- eDP-1 *enabled* at a 0x0 mode positioned at 0,0 -- exactly on top of DP-3's
--- origin. Clients then see a zero-size wl_output covering the ultrawide's
+-- eDP-1 *enabled* at a 0x0 mode positioned at 0,0 -- exactly on top of the
+-- ultrawide's origin. Clients then see a zero-size wl_output covering the
 -- corner. Firefox constrains its menu popups to that empty rectangle, so
 -- dropdowns stop rendering entirely; disabling the output restores them.
 -- 2026-08-12: verified on Hyprland 0.56.2 with Firefox 153.0.4.
@@ -54,8 +68,6 @@ hl.monitor({
 -- alive, and was rejected the same day: an enabled output behind a shut lid
 -- claims a workspace, so windows open on a screen that cannot be seen.
 -------------------------------------------------------
-
-local BUILT_IN = "eDP-1"
 
 -- Two consecutive sightings put Xwayland's registry bind safely in the past.
 -- The ceiling covers a session where no X client ever triggers Hyprland's lazy
@@ -105,7 +117,7 @@ local function reconcile()
             hl.monitor({
                 output = BUILT_IN,
                 mode = "preferred",
-                position = "auto",
+                position = BUILT_IN_POSITION,
                 scale = 1,
             })
         else
