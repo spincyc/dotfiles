@@ -126,32 +126,39 @@ local function xwayland_is_running()
     return answer:match("running") ~= nil
 end
 
+local gate = nil
+
 -- Holds the startup pass, and the eDP-1 monitor.added that races it, away from
 -- Xwayland's registry bind. Reconciling stays immediate once the gate opens.
 local function await_xwayland()
     if xwayland_settled then
         return
     end
+    if gate then
+        gate:set_enabled(false)
+    end
 
     local waited, seen_running = 0, false
-    local gate
-    gate = hl.timer(function()
+    local this
+    this = hl.timer(function()
         waited = waited + XWAYLAND_POLL_MS
         local running = xwayland_is_running()
         if (running and seen_running) or waited >= XWAYLAND_GRACE_MS then
-            gate:set_enabled(false)
+            this:set_enabled(false)
             xwayland_settled = true
             reconcile()
         else
             seen_running = running
         end
     end, { timeout = XWAYLAND_POLL_MS, type = "repeat" })
+    gate = this
 end
 
--- A reload re-executes this file without re-firing hyprland.start, so the gate
--- has to reopen on config.reloaded too.
+-- Arming at load time covers a config reload, which re-executes this file
+-- without re-firing hyprland.start. Arming again on start covers the reverse
+-- risk, that timers are not serviced yet while the config is still executing.
+await_xwayland()
 hl.on("hyprland.start", await_xwayland)
-hl.on("config.reloaded", await_xwayland)
 hl.on("monitor.added", reconcile)
 hl.on("monitor.removed", reconcile)
 
