@@ -25,7 +25,7 @@ _wt() {
     'fetch:git fetch --prune in every repo'
     'sync:fetch, then rebase onto the default branch'
     'push:publish the workspace branch where there is work'
-    'agents:show occupied and free agent slots'
+    'agents:show the agents running right now'
     'check:sanity-check the environment and layout'
     'tidy:delete .scratch and Git-ignored files'
     'sweep:remove workspaces whose work is all pushed'

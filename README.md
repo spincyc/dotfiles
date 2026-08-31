@@ -279,7 +279,7 @@ wt exec telos/agent-sync -- rg -n TODO  # any command, in every clone
 wt fetch telos/agent-sync               # git fetch --prune in every clone
 wt sync telos/agent-sync                # fetch, then rebase onto the default branch
 wt push telos/agent-sync                # publish where there is work to publish
-wt agents                               # occupied and free agent slots
+wt agents                               # the agents running right now
 wt check                                # environment and layout sanity check
 wt rm telos/agent-sync                  # refuses uncommitted, unpushed, or stashed work
 wt sweep --dry-run                      # the workspaces a sweep would remove
@@ -331,9 +331,9 @@ workspace whose work is already saved, by the test `wt rm` uses: nothing
 uncommitted and nothing untracked, since a stray untracked file counts as
 work; nothing stashed; and every local branch has an upstream it is not
 ahead of. It keeps, and reports the reason for, any workspace that holds
-unsaved work, currently runs an agent in one of the slots below, contains the
-current directory, or holds anything `wt` cannot account for — a clone at the
-wrong depth, or a file left at the top instead of under `.scratch`. It then
+unsaved work, currently runs an agent, contains the current directory, or
+holds anything `wt` cannot account for — a clone at the wrong depth, or a
+file left at the top instead of under `.scratch`. It then
 removes any project directory it has emptied, and exits nonzero if it refused
 a workspace outright, as it does for one reached through a symlink. It has no
 `--force`: discarding unsaved work stays an explicit, single-workspace
@@ -354,17 +354,16 @@ one, otherwise the workspace you are standing in, otherwise every workspace;
 either way it spares a workspace with an agent running in it, unless that
 workspace is the one you are standing in.
 
-Concurrent agents are capped. Each launch holds one slot as an open `flock`
-descriptor that survives the exec into the agent, so the kernel releases it
-when the agent exits however it exits, and there is no stale state to clean
-up. `wt agents` reports the slots; a launch past the cap is refused with
-exit 75, `EX_TEMPFAIL`, which is what makes waiting for a slot writable:
+Nothing caps how many agents run at once: that is decided by how many you
+start. Each launch does take a slot in `$WT_ROOT/.agents`, held as an open
+`flock` descriptor that survives the exec into the agent, so the kernel
+releases it when the agent exits however it exits, and there is no stale
+state to clean up. The slot is not a quota; it is how `wt tidy`, `wt sweep`
+and `wt rm` know a workspace is occupied, and `wt agents` lists what is
+running. A registry `wt` cannot read stops those three verbs outright, since
+an unreadable registry is not an empty one.
 
-```sh
-until wt claude telos/agent-sync; do sleep 30; done
-```
-
-The other statuses are the ordinary ones: 2 for a usage error, 1 for a
+The exit statuses are the ordinary ones: 2 for a usage error, 1 for a
 failure, 130 for an interrupt, and 141 for a closed pipe, so `wt ls | head`
 stays quiet.
 
@@ -374,13 +373,12 @@ stays quiet.
 | `WT_PROJECT` | none | Project applied to a bare slug |
 | `WT_BRANCH_PREFIX` | `feature` | Prefix of the workspace branch |
 | `WT_AGENT` | `claude` | Agent used when none is named |
-| `WT_MAX_AGENTS` | `4` | Concurrent agent slots |
 | `WT_FORGE` | `https://github.com` | Base URL for `owner/repo` clones |
-| `XDG_STATE_HOME` | `~/.local/state` | Where the agent slots live |
 
-`XDG_STATE_HOME` is part of the contract, not an implementation detail: the
-slot locks live in `$XDG_STATE_HOME/wt/agents`, so two shells that disagree
-about it get independent pools and `WT_MAX_AGENTS` agents each.
+`WT_ROOT` is the only location in the contract: everything `wt` creates lives
+under it, the agent slots included, in `$WT_ROOT/.agents`. Two shells pointed
+at different roots therefore keep separate registries, and neither can report
+an agent running in the other's workspaces.
 
 Bare `owner/repo` clones go through `gh` when it is installed, so private
 repositories need no separate credential setup; explicit URLs and local
@@ -394,7 +392,7 @@ into nothing else — a shell you opened yourself has none of them:
 | `WT_WORKSPACE` | The workspace name, `<project>/<slug>` |
 | `WT_WORKSPACE_DIR` | Its absolute path, the directory the agent starts in |
 | `WT_BRANCH` | The workspace branch, for `git push -u origin "$WT_BRANCH"` |
-| `WT_AGENT_SLOT` | Which of `WT_MAX_AGENTS` slots this agent holds |
+| `WT_AGENT_SLOT` | Which agent slot this session holds |
 | `AIQ_DISABLE` | Set to `1`: a workspace keeps no work ledger |
 
 The package needs Python 3.11 or newer (`enum.StrEnum`).
@@ -420,8 +418,8 @@ and the questions that decide whether a clone holds unsaved work,
 including local paths, `wt.guidance` the workspace documents, `wt.scratch`
 the `.scratch` convention and its local Git exclusion, `wt.workspaces`
 creation, resolution and the one disposal gate every destructive verb goes
-through, `wt.slots` the flock concurrency limit, `wt.checks` the sanity
-check, and `wt.cli` the command line, whose `agent_environment` is the
+through, `wt.slots` the flock registry of running agents, `wt.checks` the
+sanity check, and `wt.cli` the command line, whose `agent_environment` is the
 exported-variable contract above. Nothing outside `wt.cli` prints: the only
 output another module produces is a child git's own, on the terminal it was
 handed.
@@ -435,8 +433,9 @@ never touch `~/git`, your real `HOME`, or the network, with:
 ```
 
 `make verify` runs both. The unit suite covers what a shell test cannot: the
-`LC_ALL=C` pin that keeps `git clean` parseable, the slot ceiling, and the
-unsaved-work oracle failing closed on a repository git cannot read.
+`LC_ALL=C` pin that keeps `git clean` parseable, the slot survey and what it
+refuses to guess, and the unsaved-work oracle failing closed on a repository
+git cannot read.
 
 ## Local configuration
 

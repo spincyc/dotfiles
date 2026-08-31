@@ -1,12 +1,17 @@
-"""The flock-backed concurrent-agent limit.
+"""The flock-backed registry of running agents.
 
-Each slot is a lock file. The holder keeps the descriptor open, and the kernel
-releases the lock when the process dies, so a crashed or killed agent never
-leaves a slot behind and there is no stale state to prune.
+Each agent holds one slot, which is a lock file. The holder keeps the
+descriptor open, and the kernel releases the lock when the process dies, so a
+crashed or killed agent never leaves a slot behind and there is no stale state
+to prune.
 
 The descriptor is marked inheritable, which is what lets `wt` hand the slot to
 the agent it execs: the lock lives on the open file description, so it
 survives the exec and is held for exactly as long as the agent runs.
+
+Nothing here caps how many agents may run. The registry exists so the verbs
+that delete things can tell which workspaces are occupied; how many agents to
+run is decided by how many you start.
 """
 
 import fcntl
@@ -62,11 +67,10 @@ class BusyAgents:
 
 
 class SlotPool:
-    """A fixed number of agent slots below one directory."""
+    """Every agent slot below one directory."""
 
-    def __init__(self, agents_dir: Path, size: int) -> None:
+    def __init__(self, agents_dir: Path) -> None:
         self.agents_dir = agents_dir
-        self.size = size
         self._held_fd: int | None = None
         self._held_index: int | None = None
 
@@ -81,31 +85,40 @@ class SlotPool:
         self.agents_dir.chmod(0o700)
 
     def ceiling(self) -> int:
-        """The highest slot worth probing.
+        """The highest slot worth probing, from the lock files on disk.
 
-        A slot taken when the limit was higher is still held by a live agent,
-        so a sweep that only looked at the current limit would delete the
-        workspace out from under it. Never shrink below what exists on disk.
+        A directory that is not there yet holds no locks, so nothing is
+        running. A directory that exists and cannot be read is a different
+        fact: it says nothing about who is running, and reading it as an
+        empty pool is what would let a sweep delete a workspace a live agent
+        is holding. So it raises instead.
         """
-        highest = self.size
+        highest = 0
         try:
             entries = list(self.agents_dir.iterdir())
-        except OSError:
-            # An unreadable directory says nothing about who is running; the
-            # configured size is all this can honestly claim.
+        except FileNotFoundError:
             return highest
+        except OSError as error:
+            raise WtError(
+                f"cannot read the agent slots in {self.agents_dir}: {error}"
+            ) from error
         for entry in entries:
             match = _LOCK_NAME.match(entry.name)
             if match:
                 highest = max(highest, min(int(match.group(1)), _MAX_SLOT))
         return highest
 
-    def acquire(self, agent: str, workspace: str) -> int | None:
-        """Take the first free slot, or None when every slot is busy."""
+    def acquire(self, agent: str, workspace: str) -> int:
+        """Take the lowest free slot.
+
+        The lowest rather than the next one up, so the lock files a machine
+        accumulates stay as few as the agents that ran at once, rather than
+        one per launch forever.
+        """
         if self._held_fd is not None:
             raise WtError("this pool already holds an agent slot")
         self.ensure_dir()
-        for index in range(1, self.size + 1):
+        for index in range(1, _MAX_SLOT + 1):
             try:
                 fd = os.open(
                     self.lock_path(index),
@@ -127,7 +140,10 @@ class SlotPool:
             self._held_index = index
             self._describe(index, agent, workspace)
             return index
-        return None
+        raise WtError(
+            f"no agent slot could be taken in {self.agents_dir}: "
+            f"{_MAX_SLOT} are in use or unusable"
+        )
 
     def release(self) -> None:
         """Drop the held slot and remove its info file.
@@ -204,9 +220,12 @@ class SlotPool:
             ),
         )
 
+    def running(self) -> list["SlotState"]:
+        """Every slot a live agent is holding, in order."""
+        return [state for state in self.survey() if state.busy]
+
     def survey(self) -> list[SlotState]:
-        """The state of every slot, in order."""
-        self.ensure_dir()
+        """The state of every slot a lock file exists for, in order."""
         states: list[SlotState] = []
         for index in range(1, self.ceiling() + 1):
             if self.is_free(index):

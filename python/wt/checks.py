@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from . import gitcmd, guidance, repos, workspaces
+from . import gitcmd, guidance, repos, slots, workspaces
 from .config import KNOWN_AGENTS, Config
 from .errors import WtError
 
@@ -89,19 +89,21 @@ def _commands(config: Config) -> list[CheckResult]:
     return results
 
 
-def _limits(config: Config) -> list[CheckResult]:
-    # An unusable limit is not a cosmetic complaint: the slot survey sizes
-    # itself from it, and a survey that covers nothing lets `wt sweep` delete
-    # a workspace a live agent is still holding.
-    if not config.max_agents_valid:
-        return [
-            CheckResult(
-                Level.FAIL,
-                f"WT_MAX_AGENTS is not a positive integer: "
-                f"{config.max_agents_raw}",
-            )
-        ]
-    return [CheckResult(Level.OK, f"WT_MAX_AGENTS={config.max_agents}")]
+def _agents(config: Config) -> list[CheckResult]:
+    """Report the running agents, and fail on a registry nothing can read.
+
+    An unreadable registry is not an empty one: every verb that deletes a
+    workspace asks it which trees are occupied, and an answer of "none" is
+    the one that deletes a workspace out from under a live agent.
+    """
+    try:
+        running = slots.SlotPool(config.agents_dir).running()
+    except (OSError, WtError) as error:
+        # The refusal already names the directory and the reason, in the same
+        # words the verbs that stop on it use.
+        return [CheckResult(Level.FAIL, str(error))]
+    plural = "" if len(running) == 1 else "s"
+    return [CheckResult(Level.OK, f"{len(running)} agent{plural} running")]
 
 
 def _root(config: Config) -> list[CheckResult]:
@@ -315,11 +317,13 @@ def _layout(config: Config) -> list[CheckResult]:
 
 def run(config: Config) -> list[CheckResult]:
     """Every check, in report order."""
-    results = _commands(config) + _limits(config)
+    results = _commands(config)
     root_results = _root(config)
     results += root_results
     if root_results[0].level is Level.OK:
-        results += _layout(config)
+        # The registry lives under the root, so there is nothing to say about
+        # it until the root itself checks out.
+        results += _agents(config) + _layout(config)
     return results
 
 

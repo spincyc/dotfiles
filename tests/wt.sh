@@ -68,7 +68,6 @@ env_run() {
   GIT_TERMINAL_PROMPT=0 \
   GIT_ASKPASS=/bin/false \
   WT_ROOT="${wt_root:-$work}" \
-  WT_MAX_AGENTS="${wt_max_agents:-2}" \
   WT_AGENT="${wt_agent:-fake-agent}" \
   WT_PROJECT="${wt_project:-}" \
   WT_BRANCH_PREFIX="${wt_branch_prefix:-feature}" \
@@ -457,7 +456,7 @@ assert_contains "$git_fail" 'wt: failed in spincyc/beta'
 printf '# check passes on a healthy layout\n'
 check_out=$(wt_run check) || fail "check failed on a healthy layout: $check_out"
 assert_contains "$check_out" 'wt check passed.'
-assert_contains "$check_out" 'WT_MAX_AGENTS=2'
+assert_contains "$check_out" '0 agents running'
 
 printf '# check warns about a repository off the workspace branch\n'
 git -C "$work/telos/demo/spincyc/beta" checkout --quiet main
@@ -510,11 +509,26 @@ assert_contains "$(wt_run telos/demo 2>/dev/null)" 'agent=fake-agent'
 printf '# the launched agent keeps no work ledger\n'
 assert_contains "$launch_out" 'aiq_disable=1'
 
+printf '# launching creates the workspace, a near-miss name included\n'
+# A slug one character from an existing one used to be refused as a typo,
+# which made `wt new` a required first step for the next lane of work.
+wt_root="$test_root/near"
+wt_run new lanes/meridian-lane-2 >/dev/null 2>&1
+lane_out=$(wt_run lanes/meridian-lane-3 2>/dev/null) ||
+  fail "a launch was refused a name close to an existing workspace"
+assert_contains "$lane_out" 'workspace=lanes/meridian-lane-3'
+assert_contains "$lane_out" "cwd=$test_root/near/lanes/meridian-lane-3"
+[ -f "$test_root/near/lanes/meridian-lane-3/AGENTS.md" ] ||
+  fail "the launch did not create the workspace it was given"
+wt_root="$work"
+
 printf '# slots are released when the agent exits\n'
 agents_out=$(wt_run agents)
-assert_contains "$agents_out" '0 of 2 slots in use'
+assert_contains "$agents_out" 'no agents running'
+# The registry lives under the root, and nowhere else.
+[ -d "$work/.agents" ] || fail "the registry is not under the workspace root"
 
-printf '# max agents is enforced\n'
+printf '# every agent holds its own slot, and nothing caps them\n'
 wt_agent=slow-agent wt_run telos/demo >/dev/null 2>&1 &
 first_agent=$!
 wt_agent=slow-agent wt_run telos/bare >/dev/null 2>&1 &
@@ -524,18 +538,17 @@ second_agent=$!
 # first one is, and a shared sentinel cannot tell the two apart.
 wait_for '[ -e "$test_root/slow-started-1" ] &&
   [ -e "$test_root/slow-started-2" ]'
-wait_for 'wt_run agents | grep -Fq "2 of 2 slots in use"'
+wait_for 'wt_run agents | grep -Fq "2 agents running"'
 busy_out=$(wt_run agents)
-assert_contains "$busy_out" '2 of 2 slots in use'
+assert_contains "$busy_out" '2 agents running'
 assert_contains "$busy_out" 'workspace=telos/demo'
 assert_contains "$busy_out" 'workspace=telos/bare'
-# Slot exhaustion is EX_TEMPFAIL: the request was fine, the resource was not,
-# which is what makes `until wt claude telos/foo; do sleep 30; done` writable.
-third_status=0
-third_out=$(wt_agent=slow-agent wt_run telos/demo 2>&1) || third_status=$?
-[ "$third_status" -eq 75 ] ||
-  fail "a third agent did not exit EX_TEMPFAIL: $third_status"
-assert_contains "$third_out" 'all 2 agent slots are busy'
+# A further launch is not rationed: how many agents run at once is decided by
+# how many are started, so this one takes the next slot and runs.
+third_out=$(wt_run telos/demo 2>/dev/null) ||
+  fail "a third agent was refused"
+assert_contains "$third_out" 'slot=3'
+assert_contains "$third_out" 'workspace=telos/demo'
 # A workspace an agent is running in is not swept out from under it.
 assert_contains "$(wt_run sweep telos/demo)" 'an agent is running here'
 [ -d "$work/telos/demo" ] || fail "sweep removed a workspace holding an agent"
@@ -550,13 +563,15 @@ rm -rf -- "$work/telos/demo/.scratch"
 # A busy slot that cannot be identified protects every workspace, since the
 # one it holds is unknown.
 wt_run new telos/idle >/dev/null 2>&1
-rm -f -- "$state/wt/agents/slot-1.info"
+rm -f -- "$work/.agents/slot-1.info"
+unnamed_out=$(wt_run agents)
+assert_contains "$unnamed_out" '(unidentified)'
 assert_contains "$(wt_run sweep telos/idle)" 'an agent is running here'
 [ -d "$work/telos/idle" ] || fail "sweep trusted an unnamed busy slot"
 : >"$test_root/slow-release"
 wait "$first_agent" || fail "the first held agent failed"
 wait "$second_agent" || fail "the second held agent failed"
-assert_contains "$(wt_run agents)" '0 of 2 slots in use'
+assert_contains "$(wt_run agents)" 'no agents running'
 # Freed slots name nobody, so the workspace the unnamed slot protected is
 # now ordinary: clean it up before the sections that count workspaces.
 wt_run sweep telos/idle >/dev/null || fail "sweep refused a freed workspace"
@@ -886,29 +901,34 @@ assert_contains "$link_tidy" '3 transient paths removed'
 [ ! -e "$link_ws/spincyc/alpha/build.log" ] ||
   fail "tidy reported a removal it never made"
 
-printf '# a sweep refuses a slot limit it cannot read\n'
+printf '# a sweep refuses a registry it cannot read\n'
 wt_root="$test_root/limits"
 wt_run new limits/keep >/dev/null 2>&1
-# An unusable limit made the slot survey cover nothing, which read as "no
-# agent is running anywhere" and swept workspaces out from under live agents.
-if limit_sweep=$(wt_max_agents=lots wt_run sweep 2>&1); then
+# A launch is what creates the registry; this one runs and exits at once,
+# leaving the lock files behind for the sections below to break.
+wt_run limits/keep >/dev/null 2>&1 || fail "the registry launch failed"
+chmod 000 "$wt_root/.agents"
+# An unreadable registry is not an empty one. Reading it as empty is what
+# swept workspaces out from under live agents.
+if blind_sweep=$(wt_run sweep 2>&1); then
   fail "a sweep proceeded without knowing which workspaces hold an agent"
 fi
-assert_contains "$limit_sweep" 'WT_MAX_AGENTS is not a positive integer: lots'
-assert_contains "$limit_sweep" 'refusing to sweep'
+assert_contains "$blind_sweep" 'cannot read the agent slots'
 [ -d "$wt_root/limits/keep" ] || fail "the sweep deleted a workspace blind"
-if limit_tidy=$(wt_max_agents=lots wt_run tidy 2>&1); then
-  fail "a tidy proceeded on an unreadable slot limit"
+if blind_tidy=$(wt_run tidy 2>&1); then
+  fail "a tidy proceeded on a registry it cannot read"
 fi
-assert_contains "$limit_tidy" 'WT_MAX_AGENTS is not a positive integer: lots'
-if limit_agents=$(wt_max_agents=0 wt_run agents 2>&1); then
-  fail "agents accepted a zero limit"
+assert_contains "$blind_tidy" 'cannot read the agent slots'
+if blind_agents=$(wt_run agents 2>&1); then
+  fail "agents reported a registry it cannot read"
 fi
-assert_contains "$limit_agents" 'WT_MAX_AGENTS is not a positive integer: 0'
-if limit_check=$(wt_max_agents=-1 wt_run check 2>&1); then
-  fail "check passed with an unusable slot limit"
+assert_contains "$blind_agents" 'cannot read the agent slots'
+if blind_check=$(wt_run check 2>&1); then
+  fail "check passed with a registry it cannot read"
 fi
-assert_contains "$limit_check" 'WT_MAX_AGENTS is not a positive integer: -1'
+assert_contains "$blind_check" 'cannot read the agent slots'
+chmod 700 "$wt_root/.agents"
+wt_run check >/dev/null 2>&1 || fail "check failed once the registry was back"
 
 printf '# clean still works, and says on stderr that it is now sweep\n'
 wt_root="$test_root/legacy"

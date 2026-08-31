@@ -289,7 +289,7 @@ class CloneSpecTest(unittest.TestCase):
 
 
 class ConfigTest(unittest.TestCase):
-    """Settings read from the environment, and the slot limit above all."""
+    """Settings read from the environment, and where they put the registry."""
 
     def build(self, **environment: str) -> config.Config:
         return config.Config.from_env({"HOME": "/home/nobody", **environment})
@@ -303,9 +303,8 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(settings.forge, config.DEFAULT_FORGE)
         self.assertEqual(
             settings.agents_dir,
-            Path("/home/nobody/.local/state/wt/agents"),
+            Path("/home/nobody/git/worktrees/.agents"),
         )
-        self.assertTrue(settings.max_agents_valid)
 
     def test_every_setting_is_overridable(self) -> None:
         settings = self.build(
@@ -314,120 +313,133 @@ class ConfigTest(unittest.TestCase):
             WT_BRANCH_PREFIX="work",
             WT_AGENT="codex",
             WT_FORGE="https://forge.invalid",
-            XDG_STATE_HOME="/tmp/state",
         )
         self.assertEqual(settings.root, Path("/tmp/ws"))
         self.assertEqual(settings.project, "telos")
         self.assertEqual(settings.branch_prefix, "work")
         self.assertEqual(settings.agent, "codex")
         self.assertEqual(settings.forge, "https://forge.invalid")
-        self.assertEqual(settings.agents_dir, Path("/tmp/state/wt/agents"))
+
+    def test_the_registry_follows_the_root(self) -> None:
+        # The root is the only location in the contract, so two roots keep
+        # separate registries and neither reports the other's agents.
+        here = self.build(WT_ROOT="/tmp/one")
+        there = self.build(WT_ROOT="/tmp/two")
+        self.assertEqual(here.agents_dir, Path("/tmp/one/.agents"))
+        self.assertEqual(there.agents_dir, Path("/tmp/two/.agents"))
+        # Dotted, so the walk that looks for projects steps over it.
+        self.assertTrue(config.AGENTS_DIRNAME.startswith("."))
 
     def test_an_empty_value_is_no_value(self) -> None:
-        settings = self.build(WT_PROJECT="", WT_AGENT="", WT_MAX_AGENTS="")
+        settings = self.build(WT_PROJECT="", WT_AGENT="")
         self.assertIsNone(settings.project)
         self.assertEqual(settings.agent, config.DEFAULT_AGENT)
-        self.assertEqual(settings.max_agents, config.DEFAULT_MAX_AGENTS)
-        self.assertTrue(settings.max_agents_valid)
-
-    def test_the_slot_limit_matrix(self) -> None:
-        # An unusable limit must not read as "no slots to check": every
-        # consumer that could destroy something refuses on max_agents_valid,
-        # and a survey sized from a value nobody understood covers nothing.
-        cases = [
-            ("1", 1, True),
-            ("4", 4, True),
-            ("16", 16, True),
-            (" 3 ", 3, True),
-            ("0", 0, False),
-            ("-2", 0, False),
-            ("lots", 0, False),
-            ("4.5", 0, False),
-            ("1e3", 0, False),
-        ]
-        for raw, limit, valid in cases:
-            with self.subTest(raw=raw):
-                settings = self.build(WT_MAX_AGENTS=raw)
-                self.assertEqual(settings.max_agents, limit)
-                self.assertIs(settings.max_agents_valid, valid)
-                # Kept verbatim, so the report can name what was typed.
-                self.assertEqual(settings.max_agents_raw, raw)
-
-    def test_a_hand_built_config_agrees_with_itself(self) -> None:
-        usable = config.Config(root=Path("/tmp/ws"))
-        self.assertTrue(usable.max_agents_valid)
-        # The default raw string parses, but a caller that zeroed the limit
-        # meant it: both halves have to agree before the value counts.
-        zeroed = config.Config(root=Path("/tmp/ws"), max_agents=0)
-        self.assertFalse(zeroed.max_agents_valid)
 
 
 class SlotPoolTest(unittest.TestCase):
-    """The flock-backed agent slots, and what the survey is allowed to miss."""
+    """The flock-backed agent slots, and what the survey may not guess."""
 
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.agents_dir = Path(temporary.name) / "agents"
 
-    def pool(self, size: int = 2) -> slots.SlotPool:
-        return slots.SlotPool(self.agents_dir, size)
+    def pool(self) -> slots.SlotPool:
+        return slots.SlotPool(self.agents_dir)
 
-    def test_ceiling_is_the_size_when_nothing_is_higher(self) -> None:
-        pool = self.pool(2)
-        pool.ensure_dir()
-        self.assertEqual(pool.ceiling(), 2)
+    def test_a_directory_that_is_not_there_holds_nobody(self) -> None:
+        # No registry yet is no agent yet, which is the one honest reading:
+        # nothing has ever taken a lock here.
+        pool = self.pool()
+        self.assertEqual(pool.ceiling(), 0)
+        self.assertEqual(pool.survey(), [])
+        self.assertFalse(pool.busy_agents().holds("telos/demo"))
 
-    def test_ceiling_sees_a_slot_above_the_current_size(self) -> None:
-        # A slot taken while WT_MAX_AGENTS was higher is still held by a live
-        # agent; a survey stopping at the current limit would sweep the
-        # workspace out from under it.
-        pool = self.pool(2)
+    def test_the_survey_reaches_the_highest_lock_on_disk(self) -> None:
+        # A slot is not sized by any limit: whatever lock files exist are
+        # what a live agent may be holding, and a survey that stopped short
+        # of one would sweep the workspace out from under it.
+        pool = self.pool()
         pool.ensure_dir()
         (self.agents_dir / "slot-7.lock").touch()
         self.assertEqual(pool.ceiling(), 7)
         self.assertEqual(len(pool.survey()), 7)
 
-    def test_ceiling_ignores_what_is_not_a_slot(self) -> None:
-        pool = self.pool(2)
+    def test_the_ceiling_ignores_what_is_not_a_slot(self) -> None:
+        pool = self.pool()
         pool.ensure_dir()
         for name in ("slot-x.lock", "slot-9.info", "notes.txt", "slot-.lock"):
             (self.agents_dir / name).touch()
-        self.assertEqual(pool.ceiling(), 2)
+        self.assertEqual(pool.ceiling(), 0)
 
-    def test_ceiling_of_an_unreadable_directory_is_the_size(self) -> None:
-        # Nothing can honestly be claimed about who is running; the
-        # configured size is all that is left.
-        self.assertEqual(self.pool(3).ceiling(), 3)
+    @unittest.skipIf(os.geteuid() == 0, "root reads an unreadable directory")
+    def test_an_unreadable_directory_refuses_to_answer(self) -> None:
+        # An unreadable registry is not an empty one. Answering "nobody is
+        # running" here is what deletes a workspace under a live agent, so
+        # every consumer has to see this raise.
+        pool = self.pool()
+        pool.ensure_dir()
+        self.agents_dir.chmod(0o000)
+        self.addCleanup(self.agents_dir.chmod, 0o700)
+        with self.assertRaises(WtError):
+            pool.ceiling()
+        with self.assertRaises(WtError):
+            pool.busy_agents()
 
     def test_a_held_slot_names_its_workspace(self) -> None:
-        pool = self.pool(2)
+        pool = self.pool()
         slot = pool.acquire("claude", "telos/demo")
         self.addCleanup(pool.release)
         self.assertEqual(slot, 1)
-        busy = self.pool(2).busy_agents()
+        busy = self.pool().busy_agents()
         self.assertTrue(busy.holds("telos/demo"))
         self.assertFalse(busy.holds("telos/other"))
 
+    def test_nothing_caps_how_many_slots_are_taken(self) -> None:
+        # The registry counts agents; it does not ration them.
+        held = []
+        for expected in range(1, 6):
+            pool = self.pool()
+            self.addCleanup(pool.release)
+            held.append(pool.acquire("claude", f"telos/lane-{expected}"))
+        self.assertEqual(held, [1, 2, 3, 4, 5])
+        busy = self.pool().busy_agents()
+        self.assertTrue(busy.holds("telos/lane-5"))
+        self.assertEqual(len(self.pool().running()), 5)
+
+    def test_the_lowest_free_slot_is_reused(self) -> None:
+        # Otherwise a machine accumulates one lock file per launch forever,
+        # and every survey walks all of them.
+        first = self.pool()
+        second = self.pool()
+        self.addCleanup(second.release)
+        self.assertEqual(first.acquire("claude", "telos/one"), 1)
+        self.assertEqual(second.acquire("claude", "telos/two"), 2)
+        first.release()
+        third = self.pool()
+        self.addCleanup(third.release)
+        self.assertEqual(third.acquire("claude", "telos/three"), 1)
+
     def test_a_busy_slot_with_no_info_protects_every_workspace(self) -> None:
-        pool = self.pool(2)
+        pool = self.pool()
         pool.acquire("claude", "telos/demo")
         self.addCleanup(pool.release)
         pool.info_path(1).unlink()
-        busy = self.pool(2).busy_agents()
+        busy = self.pool().busy_agents()
         self.assertTrue(busy.unnamed)
         # The workspace it holds cannot be identified, and guessing wrong
         # deletes the tree an agent is working in.
         self.assertTrue(busy.holds("anything/at-all"))
 
     def test_a_released_slot_names_nobody(self) -> None:
-        pool = self.pool(2)
+        pool = self.pool()
         pool.acquire("claude", "telos/demo")
         pool.release()
-        busy = self.pool(2).busy_agents()
+        busy = self.pool().busy_agents()
         self.assertFalse(busy.unnamed)
         self.assertFalse(busy.holds("telos/demo"))
         self.assertFalse(pool.info_path(1).exists())
+        self.assertEqual(self.pool().running(), [])
 
 
 class UnsavedWorkTest(TemporaryHome):
@@ -551,15 +563,13 @@ class WorkspaceNameTest(TemporaryHome):
         # is caught too — the slug alone never sees it.
         root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, root, True)
-        config = Config(root=root, state_dir=root / "state")
+        config = Config(root=root)
         with self.assertRaises(WtError) as raised:
             workspaces.named(config, "proj/a..b").create()
         self.assertIn("feature/a..b", raised.exception.message)
         self.assertFalse((root / "proj" / "a..b").exists())
 
-        odd = Config(
-            root=root, state_dir=root / "state", branch_prefix="bad prefix"
-        )
+        odd = Config(root=root, branch_prefix="bad prefix")
         with self.assertRaises(WtError):
             workspaces.named(odd, "proj/fine").create()
 

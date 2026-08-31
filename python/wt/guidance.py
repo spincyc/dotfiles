@@ -114,8 +114,8 @@ a `tmt.json`, tool making applies to that repository normally.
 - `WT_WORKSPACE_DIR` — its absolute path, the directory you started in.
 - `WT_BRANCH` — the workspace branch, `{branch}`. Publish with
   `git push -u origin "$WT_BRANCH"` rather than retyping the name.
-- `WT_AGENT_SLOT` — which of the concurrent agent slots this session holds;
-  `wt agents` lists what each one is running.
+- `WT_AGENT_SLOT` — which agent slot this session holds; `wt agents` lists
+  every agent running right now.
 - `AIQ_DISABLE` — the work-ledger switch described above.
 
 They exist only in this session; a shell opened anywhere else has none of

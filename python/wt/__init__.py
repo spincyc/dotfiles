@@ -17,7 +17,7 @@ The modules are meant to be reused on their own:
 ``wt.scratch``     the ``.scratch`` convention and its local Git exclusion
 ``wt.workspaces``  workspace creation, listing, resolution, and the gate
                    every destructive verb passes through
-``wt.slots``       the flock-backed concurrent-agent limit
+``wt.slots``       the flock-backed registry of running agents
 ``wt.checks``      the environment and layout sanity check
 ``wt.cli``         the ``wt`` command line
 """

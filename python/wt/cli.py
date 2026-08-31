@@ -22,10 +22,6 @@ from .errors import (
     WtError,
 )
 
-# sysexits.h EX_TEMPFAIL: the request was fine, the resource was not. It is
-# what makes `until wt claude telos/foo; do sleep 30; done` writable.
-EX_TEMPFAIL = 75
-
 USAGE = """\
 Usage: wt [claude|codex|droid] [<project>/]<slug> [agent-args...]
        wt <verb> [<workspace>] [args...]
@@ -61,7 +57,7 @@ Verbs:
                                   (pull is not an alias; sync rewrites)
   push [<workspace>]              Publish the workspace branch where there is
                                   work to publish
-  agents                          Show occupied and free agent slots
+  agents                          Show the agents running right now
   check                           Sanity-check the environment and layout
   tidy [-n] [<workspace>]         Delete .scratch and Git-ignored files
   sweep [-n] [<workspace>]        Remove workspaces whose work is all pushed
@@ -90,16 +86,18 @@ Environment:
   WT_PROJECT         Project for a bare slug  (no default)
   WT_BRANCH_PREFIX   Workspace branch prefix  (default feature)
   WT_AGENT           Agent for bare launches  (default claude)
-  WT_MAX_AGENTS      Concurrent agent slots   (default 4)
   WT_FORGE           Base URL for owner/repo  (default https://github.com,
                      unused when gh is installed)
-  XDG_STATE_HOME     Where the agent slots live (default ~/.local/state)
+
+How many agents run at once is up to you; each one holds a slot in
+$WT_ROOT/.agents for as long as it runs, which is how the verbs above know
+not to delete a workspace out from under it.
 
 Exported into the agent:
   WT_WORKSPACE       The workspace name, <project>/<slug>
   WT_WORKSPACE_DIR   Its absolute path
   WT_BRANCH          The workspace branch, for git push -u origin "$WT_BRANCH"
-  WT_AGENT_SLOT      Which of WT_MAX_AGENTS slots this agent holds
+  WT_AGENT_SLOT      Which slot this agent holds
   AIQ_DISABLE        A workspace keeps no work ledger\
 """
 
@@ -141,43 +139,19 @@ def _print_repo(status: repos.RepoStatus, indent: str = "") -> None:
 
 
 def _pool(config: Config) -> slots.SlotPool:
-    return slots.SlotPool(config.agents_dir, config.max_agents)
+    return slots.SlotPool(config.agents_dir)
 
 
 def _require_slot_view(config: Config) -> slots.BusyAgents:
     """Which workspaces hold an agent, or refuse to guess.
 
-    A sweep that cannot survey the pool must not proceed: an unusable
-    WT_MAX_AGENTS made the survey cover nothing at all, which read as "no
-    agent is running anywhere" and swept workspaces out from under live
-    agents.
+    A verb that deletes things must not proceed on a pool it could not
+    survey: a registry that cannot be read is not an empty one, and reading
+    it as empty is what sweeps a workspace out from under a live agent. The
+    survey raises in that case, and this is the one place every such verb
+    goes through, so none of them can forget to ask.
     """
-    if not config.max_agents_valid:
-        raise WtError(
-            f"WT_MAX_AGENTS is not a positive integer: "
-            f"{config.max_agents_raw}; refusing to sweep without knowing "
-            f"which workspaces hold an agent"
-        )
     return _pool(config).busy_agents()
-
-
-def _report_agents(config: Config, stream=None) -> int:
-    out = sys.stdout if stream is None else stream
-    pool = _pool(config)
-    states = pool.survey()
-    busy = 0
-    for state in states:
-        legacy = "  (past the limit)" if state.index > config.max_agents else ""
-        if state.busy:
-            busy += 1
-            suffix = f"   {state.info}" if state.info else ""
-            print(f"slot {state.index:<3} busy{suffix}{legacy}", file=out)
-        else:
-            print(f"slot {state.index:<3} free{legacy}", file=out)
-    # The survey deliberately reaches past WT_MAX_AGENTS to find slots taken
-    # when the limit was higher, so the denominator is what was looked at.
-    print(f"{busy} of {len(states)} slots in use", file=out)
-    return busy
 
 
 def _only_workspace(
@@ -646,15 +620,19 @@ def cmd_log(config: Config, args: list[str]) -> int:
 
 
 def cmd_agents(config: Config, args: list[str]) -> int:
+    """List the agents running now. A free slot is a lock file, not news."""
     if args:
         raise UsageError("agents takes no arguments")
-    if not config.max_agents_valid:
-        # The verb whose whole subject is the slot limit used to report
-        # "0 of 0 slots in use" and exit 0 for an unusable value.
-        raise WtError(
-            f"WT_MAX_AGENTS is not a positive integer: {config.max_agents_raw}"
-        )
-    _report_agents(config)
+    running = _pool(config).running()
+    for state in running:
+        # An unidentifiable slot is still an agent, and saying so is what
+        # explains why the deleting verbs are refusing to touch anything.
+        print(f"slot {state.index:<3} {state.info or '(unidentified)'}")
+    if not running:
+        print("no agents running")
+        return 0
+    noun = "agent" if len(running) == 1 else "agents"
+    print(f"{len(running)} {noun} running")
     return 0
 
 
@@ -853,61 +831,26 @@ def agent_environment(
     }
 
 
-def _near_miss(config: Config, wanted: str) -> str | None:
-    """An existing workspace that differs from `wanted` by a typo.
-
-    Launching creates whatever name it is given, so a slip of the fingers
-    used to mint a second workspace, on a second branch, and drop the agent
-    into it with no repositories and no complaint.
-
-    A name that merely extends an existing one is not a typo: `api2` and
-    `api-v2` beside `api` are how anyone names the next piece of work, and
-    refusing those would cost more than the slip does.
-    """
-    existing = [ws.name for ws in workspaces.listing(config)]
-    if wanted in existing:
-        return None
-    close = difflib.get_close_matches(wanted, existing, n=1, cutoff=0.85)
-    if not close:
-        return None
-    typed, other = wanted.rpartition("/")[2], close[0].rpartition("/")[2]
-    if typed.startswith(other) or other.startswith(typed):
-        return None
-    return close[0]
-
-
 def launch(config: Config, agent: str, args: list[str]) -> int:
-    """Create or reuse the workspace, take a slot, and become the agent."""
+    """Create or reuse the workspace, take a slot, and become the agent.
+
+    A name that names nothing is created, including one a finger-slip away
+    from an existing workspace: launching is how a workspace comes into
+    being, and second-guessing the name means `wt new` first for every new
+    line of work whose slug happens to resemble the last one.
+    """
     if not args:
         raise UsageError(f"{agent} needs a workspace")
     if shutil.which(agent) is None:
         raise WtError(f"agent is not installed: {agent}")
-    if not config.max_agents_valid:
-        raise WtError(
-            f"WT_MAX_AGENTS is not a positive integer: {config.max_agents_raw}"
-        )
 
     workspace = workspaces.named(config, args[0])
-    if not workspace.exists():
-        near = _near_miss(config, workspace.name)
-        if near is not None:
-            raise WtError(
-                f"no workspace {workspace.name}; did you mean {near}? "
-                f"(wt new {workspace.name} creates it)"
-            )
 
     # The pool stays referenced for the rest of this process: it owns the open
     # descriptor that holds the slot across the exec below. Take it before
-    # creating anything, so a refused launch leaves no empty workspace.
+    # creating anything, so a failed launch leaves no empty workspace.
     pool = _pool(config)
     slot = pool.acquire(agent, workspace.name)
-    if slot is None:
-        print(
-            f"wt: all {config.max_agents} agent slots are busy (WT_MAX_AGENTS)",
-            file=sys.stderr,
-        )
-        _report_agents(config, stream=sys.stderr)
-        return EX_TEMPFAIL
 
     if workspace.create():
         print(f"created  {workspace.path}", file=sys.stderr)
@@ -915,7 +858,7 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
     os.environ.update(agent_environment(workspace, slot))
     print(
         f"wt: {agent} in {workspace.path} on {workspace.branch} "
-        f"(slot {slot} of {config.max_agents})",
+        f"(slot {slot})",
         file=sys.stderr,
     )
     sys.stdout.flush()
