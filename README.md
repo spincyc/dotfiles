@@ -163,7 +163,9 @@ The desktop profile preserves the established physical Hyprland key chords,
 removes the random-wallpaper action, disables Kitty's cursor trail, pins Kitty's
 two green palette slots so a generated low-contrast green cannot hide added
 lines in `git diff`, and keeps machine-specific monitor and binding selections
-in the named host layer.
+in the named host layer. A common `pipewire.conf.d` drop-in adds 44100 Hz to
+`default.clock.allowed-rates`, so 44.1 kHz sources play at their own rate
+instead of being resampled to the 48 kHz default.
 That host layer specifically selects built-in `eDP-1`, the ultrawide by
 description (`desc:Samsung Electric Company Odyssey G95C`) at
 `5120x1440@239.76Hz`, and the `tpacpi::kbd_backlight` device. The ultrawide is

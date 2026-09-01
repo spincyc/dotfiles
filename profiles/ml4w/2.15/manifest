@@ -7,6 +7,7 @@ common|0644|.config/ml4w/settings/statusbar
 common|0644|.config/ml4w/settings/statusbar.json
 common|0644|.config/ml4w/settings/walker-theme
 common|0644|.config/ml4w/settings/waybar-theme.sh
+common|0644|.config/pipewire/pipewire.conf.d/10-rates.conf
 common|0644|.config/swaync/style.css
 common|0644|.config/waybar/modules-custom.json
 common|0644|.config/waybar/themes/ml4w-glass-center/config-custom
