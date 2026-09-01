@@ -186,6 +186,14 @@ destroying one while Xwayland binds the registry kills Xwayland, after which
 every X11 client hangs forever connecting to `:0`. This adds two `Lid Switch`
 binds and reads `/proc/acpi/button/lid/*/state` and `pgrep -x Xwayland`.
 
+The same reconcile also repins the default audio sink, because the
+`HiFi__HDMI1/2/3` sink names track ALSA PCM indices that rebind to physical
+connectors on hotplug, so a stored default can silently point at a dead pin
+while the sound server still reports it running. On every monitor add/remove,
+`.config/hypr/scripts/default_sink_by_eld.sh` instead selects the display
+sink whose `/proc/asound/card*/eld*` entry is valid, matching on the ELD
+monitor name, and moves live streams to it.
+
 `config.dotinst` still identifies the profile, its upstream, and its subfolder,
 and the gate checks all three; only its version field goes stale. Each layer's
 `profile.conf` records the release it was derived from as provenance rather than

@@ -15,3 +15,4 @@ host:ultrawide-desktop|0644|.config/hypr/conf/keybindings/ultrawide-desktop.lua
 host:ultrawide-desktop|0644|.config/hypr/conf/keybinding.lua
 host:ultrawide-desktop|0644|.config/hypr/conf/monitors/ultrawide-desktop.lua
 host:ultrawide-desktop|0644|.config/hypr/conf/monitor.lua
+host:ultrawide-desktop|0755|.config/hypr/scripts/default_sink_by_eld.sh

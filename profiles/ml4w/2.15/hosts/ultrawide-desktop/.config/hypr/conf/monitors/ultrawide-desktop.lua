@@ -125,6 +125,11 @@ local function reconcile()
         end
     end
 
+    -- The HiFi__HDMI1/2/3 sink names track ALSA PCM indices, which rebind to
+    -- connectors on hotplug, so the stored default sink can silently point at
+    -- a dead pin; repin it to the display sink with a valid ELD instead.
+    os.execute("setsid -f ~/.config/hypr/scripts/default_sink_by_eld.sh >/dev/null 2>&1")
+
     reconciling = false
 end
 
