@@ -28,10 +28,11 @@ then
 fi
 
 # And on a document with every section but no version declaration.
-printf '## %s\n' Roles Authorization Preconditions "Channel layout" \
+printf '## %s\n' Roles Authorization Preconditions \
+  "Workspace initialization" "Channel layout" \
   "Turn file format" "Handoff line" "Context boundary" \
   "Turn allocation and the single-writer rule" "Planner rules" \
-  "Executor rules" "Blocked channel" Recovery >"$stand_in"
+  "Executor rules" "Final sync" "Blocked channel" Recovery >"$stand_in"
 if RELAY_PROTOCOL_PATH="$stand_in" "$tool" --only relay_protocol >/dev/null 2>&1
 then
   echo "expected relay_protocol to fail without a version declaration" >&2
@@ -40,11 +41,12 @@ fi
 
 # And on a structurally complete document missing required execution settings.
 {
-  printf 'Version `relay-v4`.\n'
-  printf '## %s\n' Roles Authorization Preconditions "Channel layout" \
+  printf 'Version `relay-v5`.\n'
+  printf '## %s\n' Roles Authorization Preconditions \
+    "Workspace initialization" "Channel layout" \
     "Turn file format" "Seed briefs" "Handoff line" "Context boundary" \
     "Turn allocation and the single-writer rule" "Planner rules" \
-    "Executor rules" "Blocked channel" Recovery
+    "Executor rules" "Final sync" "Blocked channel" Recovery
 } >"$stand_in"
 if RELAY_PROTOCOL_PATH="$stand_in" "$tool" --only relay_protocol >/dev/null 2>&1
 then
@@ -53,7 +55,7 @@ then
 fi
 
 # A declared version must match the front matter, URL, and handoff example.
-sed 's/^protocol: relay-v4$/protocol: relay-v3/' \
+sed 's/^protocol: relay-v5$/protocol: relay-v4/' \
   "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/relay/PROTOCOL.md" \
   >"$stand_in"
 if RELAY_PROTOCOL_PATH="$stand_in" "$tool" --only relay_protocol >/dev/null 2>&1
@@ -69,5 +71,15 @@ sed '/`git switch --track origin\/<branch>`/d' \
 if RELAY_PROTOCOL_PATH="$stand_in" "$tool" --only relay_protocol >/dev/null 2>&1
 then
   echo "expected relay_protocol to fail without branch initialization" >&2
+  exit 1
+fi
+
+# So is the merge-preserving final sync that replaced a mandatory rebase.
+sed '/`git rebase --rebase-merges origin\/<branch>`/d' \
+  "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/relay/PROTOCOL.md" \
+  >"$stand_in"
+if RELAY_PROTOCOL_PATH="$stand_in" "$tool" --only relay_protocol >/dev/null 2>&1
+then
+  echo "expected relay_protocol to fail without the final-sync rule" >&2
   exit 1
 fi

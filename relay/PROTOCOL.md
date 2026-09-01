@@ -1,6 +1,6 @@
 # Agent relay protocol
 
-Version `relay-v4`.
+Version `relay-v5`.
 
 A planning agent with git write access and no useful shell in the user's
 checkout hands work to an executing agent that has one. Git is the only
@@ -8,7 +8,7 @@ channel between them. The exchange is committed to the work repository, so
 the record of how the repository was built stays in the repository.
 
 Canonical URL, pinned so both sides read identical rules:
-`https://raw.githubusercontent.com/spincyc/dotfiles/relay-v4/relay/PROTOCOL.md`
+`https://raw.githubusercontent.com/spincyc/dotfiles/relay-v5/relay/PROTOCOL.md`
 
 The user gives the planner that URL to open a run. The planner passes it on
 in the handoff line, which is how the executor finds it.
@@ -125,9 +125,11 @@ it.
   matches their order in time.
 - A published turn file is immutable. Never renumber, rewrite, amend, or
   delete one; corrections go in the next turn.
-- Relay artifacts ride the same branch as the work they describe. That branch
-  must not be rebased, squashed, or deleted while the run is open, because
-  every pinned sha in the run refers to it.
+- Relay artifacts ride the same branch as the work they describe. Its
+  published commits must not be rebased, squashed, or deleted while the run
+  is open, because every pinned sha in the run refers to them. The final sync
+  below replays unpublished commits only, which is why it stays inside this
+  rule.
 - Squash-merge preserves every turn file in the merged tree, so commit
   *messages* are not load-bearing. Commit *shas* are, which is why the branch
   is frozen against rewriting for the life of the run.
@@ -139,7 +141,7 @@ front matter:
 
 ```
 ---
-protocol: relay-v4
+protocol: relay-v5
 run: 2026-08-31-01
 turn: 002
 role: executor
@@ -151,7 +153,7 @@ answers: .agent/runs/2026-08-31-01/001-brief.md
 ```
 
 - `base` is the commit the turn was written against, read after the turn's
-  final rebase.
+  final sync.
 - `answers` is required on a result and names the brief it responds to.
   `abandons` is optional on a brief and names a turn it supersedes.
 - `agent` names the concrete agent implementation writing the turn, not its
@@ -183,7 +185,7 @@ A result body states, in order:
 
 - `status:` — one of `complete`, `partial`, `blocked`, `failed`.
 - `work:` — `<branch>@<sha>` for the work commits, read after the final
-  rebase, or `none`.
+  sync, or `none`.
 - `needs:` — the exact missing input, authority, or capability. Required for
   `partial`, `blocked`, and `failed`; omitted for `complete`.
 - Files touched, grouped by intent.
@@ -229,7 +231,7 @@ user to paste. It begins with `#` so that a paste into a shell prompt is
 inert as a comment rather than a half-executed command.
 
 ```
-# relay relay-v4 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v4/relay/PROTOCOL.md, initialize the clean checkout on feat/relay as it permits, run preflight, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, claim the turn, and execute that brief
+# relay relay-v5 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v5/relay/PROTOCOL.md, initialize the clean checkout on feat/relay as it permits, run preflight, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, claim the turn, and execute that brief
 ```
 
 Presentation requirement:
@@ -353,19 +355,55 @@ a hope. At most one turn may be outstanding per run.
   work. Record any deviation and its reason in the result.
 - Commit by explicit pathspec. Never `git commit -a`, never `git add -A`, and
   never commit a path the brief did not put in scope.
-- Publish in this order: `git pull --rebase`, then re-verify that the brief
+- Publish in this order: the final sync below, then re-verify that the brief
   still byte-matches `origin/<branch>`, then read the final shas, then write
   the result, then commit the result on its own, then push. Recording shas
-  before the last rebase would record shas the rebase destroys.
+  before the sync would record shas a rebase within it destroys.
 - A brief that no longer byte-matches `origin/<branch>` is the protocol
   violation to report. Do not rely on a rebase conflict to reveal it; a
   rewrite the executor is not touching applies cleanly and silently.
-- On a conflict during `git pull --rebase`, run `git rebase --abort`, restore
-  `HEAD` to its pre-push state, and report. Never leave the user's checkout
-  in a mid-rebase state.
 - Report the result even when the work failed. A missing result file is
   indistinguishable from a dead session and strands the run. If publishing
   itself is what failed, use the blocked channel.
+
+## Final sync
+
+Publishing reconciles with `origin` without destroying history. A rebase is a
+rewrite, so the protocol asks for one only when the branch has actually
+diverged, and never over commits `origin` already carries. This procedure
+replaces the mandatory `git pull --rebase` of earlier protocol versions: that
+command rebases unconditionally, so it flattens deliberate merge ancestry and
+rewrites work the branch was already carrying correctly. Do not use it in a
+relay run.
+
+With the work committed and the tree otherwise clean:
+
+1. Record the pre-sync `HEAD` with `git rev-parse HEAD`.
+2. `git fetch origin`.
+3. Run `git merge-base --is-ancestor origin/<branch> HEAD`. If it succeeds,
+   the branch is already synchronized: do not rebase. Its merge ancestry is
+   intentional and must be preserved, and the push that follows is a
+   fast-forward.
+4. Otherwise the branch has diverged, and only the unpublished range is
+   replayed. If `git rev-list --merges HEAD ^origin/<branch>` names any
+   commit, that range carries intentional merges: use
+   `git rebase --rebase-merges origin/<branch>`. If it names none, the
+   unpublished history is linear and a plain `git rebase origin/<branch>` is
+   correct.
+5. On any conflict, run `git rebase --abort`, confirm `HEAD` is back at the
+   sha from step 1, and report. Never leave the user's checkout in a
+   mid-rebase state, and never resolve a conflict in another turn's commits
+   to get a push through.
+
+Never rewrite a commit already published to `origin`. Rebasing onto
+`origin/<branch>` touches only the unpublished range, which is what keeps
+that rule and the step 3 exemption consistent.
+
+`--rebase-merges` recreates merges instead of replaying their recorded
+result, so a rebuilt merge can differ from the one the executor verified.
+After any step 4 rebase, re-run the brief's verification before writing the
+result; checks that ran against the pre-sync tree no longer prove the tree
+being pushed.
 
 ## Blocked channel
 

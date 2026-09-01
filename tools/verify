@@ -197,6 +197,7 @@ def check_relay_protocol() -> None:
         "Turn allocation and the single-writer rule",
         "Planner rules",
         "Executor rules",
+        "Final sync",
         "Blocked channel",
         "Recovery",
     ]
@@ -218,6 +219,8 @@ def check_relay_protocol() -> None:
         "`subagents` is required on a brief",
         "Before formal preflight",
         "`git switch --track origin/<branch>`",
+        "`git merge-base --is-ancestor origin/<branch> HEAD`",
+        "`git rebase --rebase-merges origin/<branch>`",
         "seed is not clean yet",
     ]
     missing = [phrase for phrase in required_phrases if phrase not in text]
