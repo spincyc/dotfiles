@@ -54,6 +54,36 @@ identity, the executor CLI, model, and reasoning level to launch, the branch
 `.agent/` is not ignored, that no commit hook rewrites or rejects markdown,
 that turn files are acceptable in that repository's permanent history, and
 that the executor's checkout has push credentials and a remote named `origin`.
+When the workspace helper can select a clone branch, select the handoff branch
+at creation time; that is the preferred bootstrap and makes the branch switch
+below unnecessary.
+
+## Workspace initialization
+
+A fresh executor checkout may start on the repository's default branch. A
+branch mismatch at that point is not yet a preflight failure.
+Before formal preflight, the executor may switch only to the branch named in
+the handoff. This happens before claiming the turn and before making any edit,
+as follows:
+
+1. `git remote get-url origin` matches the repository the handoff names.
+2. `git status --porcelain` is empty, and the `REBASE_HEAD` and `MERGE_HEAD`
+   checks from formal preflight both report nothing. Otherwise stop without
+   stashing, discarding, committing, or changing branches.
+3. `git fetch origin` succeeds, and `refs/remotes/origin/<branch>` exists.
+4. If `HEAD` already names `<branch>`, make no branch change and continue to
+   formal preflight.
+5. Otherwise, if no local `<branch>` exists, run
+   `git switch --track origin/<branch>`. If it does exist, require
+   `git rev-parse --abbrev-ref <branch>@{upstream}` to report
+   `origin/<branch>`, then run `git switch <branch>`. An existing branch with
+   another or no upstream is a hard stop; do not retarget, reset, or recreate
+   it.
+
+This is the only branch change the protocol permits. It does not authorize
+switching after a claim or after work has begun. Any initialization failure is
+reported as `preflight-failed`; otherwise the executor runs the complete
+preflight below from the target branch.
 
 The executor runs this preflight every turn, before editing anything:
 
@@ -61,8 +91,7 @@ The executor runs this preflight every turn, before editing anything:
 2. `git status --porcelain` is empty. Unrelated uncommitted work is a hard
    stop: report it and change nothing. Never stash, discard, or commit it.
 3. `git fetch origin` succeeds.
-4. `git rev-parse --abbrev-ref HEAD` equals the branch in the handoff line
-   and in the brief's `branch:` field.
+4. `git rev-parse --abbrev-ref HEAD` equals the branch in the handoff line.
 5. `git merge-base --is-ancestor <sha> origin/<branch>` succeeds, proving the
    pinned brief is on the named branch.
 6. No rebase or merge is in progress: `git rev-parse -q --verify REBASE_HEAD`
@@ -70,7 +99,9 @@ The executor runs this preflight every turn, before editing anything:
 
 Any failing step is a hard stop, reported, never improvised around. A pinned
 sha that `git show` can read proves only that the object exists locally.
-Steps 4 and 5 are what prove the checkout.
+Steps 4 and 5 are what prove the checkout. Branch mismatch remains a hard stop
+after workspace initialization; only the clean initialization above may cure
+it.
 
 ## Channel layout
 
@@ -198,7 +229,7 @@ user to paste. It begins with `#` so that a paste into a shell prompt is
 inert as a comment rather than a half-executed command.
 
 ```
-# relay relay-v3 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: git fetch origin, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, read that brief and https://raw.githubusercontent.com/spincyc/dotfiles/relay-v3/relay/PROTOCOL.md, then execute
+# relay relay-v3 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v3/relay/PROTOCOL.md, initialize the clean checkout on feat/relay as it permits, run preflight, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, claim the turn, and execute that brief
 ```
 
 - Substitute a real sha. Never emit a literal `<sha>` placeholder.
@@ -296,8 +327,11 @@ a hope. At most one turn may be outstanding per run.
 
 ## Executor rules
 
-- Run the preflight. Then claim the turn number, then read the brief at the
-  pinned commit and nothing else from the run tree.
+- Read the protocol, initialize the workspace when necessary, and run the
+  preflight. Then read the brief at the pinned commit and nothing else from
+  the run tree, verify its `branch:` matches the handoff, claim the turn
+  number, and execute the brief. Reading is not execution and may precede the
+  claim; no edit or other brief work may.
 - The active repository's own instructions and any higher-authority
   instructions outrank both this protocol and the brief. When they conflict,
   follow the higher authority and record the conflict in the result instead

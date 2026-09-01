@@ -188,6 +188,7 @@ def check_relay_protocol() -> None:
         "Roles",
         "Authorization",
         "Preconditions",
+        "Workspace initialization",
         "Channel layout",
         "Turn file format",
         "Seed briefs",
@@ -215,6 +216,8 @@ def check_relay_protocol() -> None:
         "`<reasoning>` field is required",
         "`<state>` field is required",
         "`subagents` is required on a brief",
+        "Before formal preflight",
+        "`git switch --track origin/<branch>`",
         "seed is not clean yet",
     ]
     missing = [phrase for phrase in required_phrases if phrase not in text]

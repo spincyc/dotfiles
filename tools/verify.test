@@ -61,3 +61,13 @@ then
   echo "expected relay_protocol to fail on inconsistent version uses" >&2
   exit 1
 fi
+
+# The clean-checkout branch bootstrap is part of the durable relay contract.
+sed '/`git switch --track origin\/<branch>`/d' \
+  "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/relay/PROTOCOL.md" \
+  >"$stand_in"
+if RELAY_PROTOCOL_PATH="$stand_in" "$tool" --only relay_protocol >/dev/null 2>&1
+then
+  echo "expected relay_protocol to fail without branch initialization" >&2
+  exit 1
+fi
