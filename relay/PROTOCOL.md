@@ -108,7 +108,7 @@ front matter:
 
 ```
 ---
-protocol: relay-v1
+protocol: relay-v2
 run: 2026-08-31-01
 turn: 002
 role: executor
