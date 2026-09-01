@@ -29,8 +29,8 @@ fi
 
 # And on a document with every section but no version declaration.
 printf '## %s\n' Roles Authorization Preconditions \
-  "Workspace initialization" "Channel layout" \
-  "Turn file format" "Handoff line" "Context boundary" \
+  "Workspace initialization" Preflight "Channel layout" \
+  "Turn file format" "Worked example" "Handoff line" "Context boundary" \
   "Turn allocation and the single-writer rule" "Planner rules" \
   "Executor rules" "Final sync" "Blocked channel" Recovery >"$stand_in"
 if RELAY_PROTOCOL_PATH="$stand_in" "$tool" --only relay_protocol >/dev/null 2>&1
@@ -43,8 +43,9 @@ fi
 {
   printf 'Version `relay-v5`.\n'
   printf '## %s\n' Roles Authorization Preconditions \
-    "Workspace initialization" "Channel layout" \
-    "Turn file format" "Seed briefs" "Handoff line" "Context boundary" \
+    "Workspace initialization" Preflight "Channel layout" \
+    "Turn file format" "Worked example" "Seed briefs" "Handoff line" \
+    "Context boundary" \
     "Turn allocation and the single-writer rule" "Planner rules" \
     "Executor rules" "Final sync" "Blocked channel" Recovery
 } >"$stand_in"

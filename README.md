@@ -497,6 +497,43 @@ never touch `~/git`, your real `HOME`, or the network, with:
 refuses to guess, and the unsaved-work oracle failing closed on a repository
 git cannot read.
 
+## Agent relay: `relay`
+
+`relay` performs the mechanical steps of the agent relay protocol documented
+in [`relay/PROTOCOL.md`](relay/PROTOCOL.md). A relay run pairs a planning
+agent that reaches the repository only through git with an executing CLI
+agent that has a shell; they trade turns as files on the work branch. Most of
+what the protocol asks of the executor is git bookkeeping — is the tree
+clean, is the branch the one I was sent to, has origin moved under me, which
+turn number am I allowed to write. `relay` makes those steps deterministic,
+so preflight, sync, claim, and publish are exit codes rather than prose
+followed by hand.
+
+```sh
+relay init        # switch a fresh checkout onto the branch the handoff names
+relay preflight   # the every-turn checks, before any edit
+relay sync        # reconcile with origin, preserving intentional merges
+relay claim       # take the turn by pushing its claim file
+relay prepare     # sync, re-verify the pinned brief, print the final shas
+relay publish     # commit the written result and push work and result together
+relay lint        # check turn files against the protocol's grammar
+relay --version   # the protocol version this build implements
+```
+
+It runs inside whatever repository a relay run targets, not only inside this
+one, so the installer links `bin/relay` to `~/.local/bin/relay` and the
+`relay` package to `~/.local/lib/python/relay`, the same pair `wt` uses.
+
+Each build is pinned to exactly one protocol version. `--protocol` states the
+version a caller expects, and `relay` refuses a mismatch rather than
+half-implementing another revision; `relay --version` reports the one it
+implements.
+
+The exit statuses carry the outcome: `0` success, `2` a usage error, `3`
+blocked, and `5` lint findings. A blocked run prints a `blocked: <token>`
+line naming which precondition stopped it, so the caller can act on the token
+instead of parsing the message.
+
 ## Local configuration
 
 Put machine-specific settings and secrets in `~/.zshrc.local`. That file is

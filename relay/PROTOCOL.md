@@ -63,13 +63,14 @@ below unnecessary.
 A fresh executor checkout may start on the repository's default branch. A
 branch mismatch at that point is not yet a preflight failure.
 Before formal preflight, the executor may switch only to the branch named in
-the handoff. This happens before claiming the turn and before making any edit,
-as follows:
+the handoff. This happens before claiming the turn and before making any
+edit, as follows:
 
-1. `git remote get-url origin` matches the repository the handoff names.
-2. `git status --porcelain` is empty, and the `REBASE_HEAD` and `MERGE_HEAD`
-   checks from formal preflight both report nothing. Otherwise stop without
-   stashing, discarding, committing, or changing branches.
+1. `git remote get-url origin` matches the repository the handoff names,
+   compared as normalized below.
+2. The tracked tree is clean and no rebase or merge is in progress, by the
+   preflight tests below. Otherwise stop without stashing, discarding,
+   committing, or changing branches.
 3. `git fetch origin` succeeds, and `refs/remotes/origin/<branch>` exists.
 4. If `HEAD` already names `<branch>`, make no branch change and continue to
    formal preflight.
@@ -82,26 +83,43 @@ as follows:
 
 This is the only branch change the protocol permits. It does not authorize
 switching after a claim or after work has begun. Any initialization failure is
-reported as `preflight-failed`; otherwise the executor runs the complete
-preflight below from the target branch.
+reported as `preflight-failed`.
+
+Repository identity is compared normalized, because one repository has many
+spellings: lowercase the host, drop the scheme and any leading `user@`, read
+scp-style `host:path` as `host/path`, and drop a trailing `.git` or slash. A
+repository named as bare `owner/name` matches when it equals the last two
+path segments.
+
+## Preflight
 
 The executor runs this preflight every turn, before editing anything:
 
 1. `git remote get-url origin` matches the repository the handoff names.
-2. `git status --porcelain` is empty. Unrelated uncommitted work is a hard
-   stop: report it and change nothing. Never stash, discard, or commit it.
+2. The tracked tree is clean: `git status --porcelain --untracked-files=no`
+   is empty. Unrelated uncommitted work is a hard stop: report it and change
+   nothing. Never stash, discard, or commit it. Untracked files do not fail
+   this test; pathspec-only commits are what keep them out of the run.
 3. `git fetch origin` succeeds.
 4. `git rev-parse --abbrev-ref HEAD` equals the branch in the handoff line.
-5. `git merge-base --is-ancestor <sha> origin/<branch>` succeeds, proving the
-   pinned brief is on the named branch.
+5. `git merge-base --is-ancestor <brief-sha> origin/<branch>` succeeds,
+   proving the pinned brief is on the named branch.
 6. No rebase or merge is in progress: `git rev-parse -q --verify REBASE_HEAD`
    and `MERGE_HEAD` both report nothing.
+7. `git merge-base --is-ancestor origin/<branch> HEAD` succeeds, proving the
+   checkout is not working from a stale base. When it fails only because
+   `HEAD` is behind, fast-forward with `git merge origin/<branch> --ff-only`
+   and continue; when the branch has diverged before any work began, stop.
 
 Any failing step is a hard stop, reported, never improvised around. A pinned
 sha that `git show` can read proves only that the object exists locally.
-Steps 4 and 5 are what prove the checkout. Branch mismatch remains a hard stop
-after workspace initialization; only the clean initialization above may cure
-it.
+Steps 4, 5, and 7 are what prove the checkout. Branch mismatch remains a hard
+stop after workspace initialization; only the clean initialization above may
+cure it.
+
+Step 7 exists because divergence discovered after a turn's work is a rebase
+with conflict risk, and the same divergence discovered before it is a
+fast-forward that costs nothing.
 
 ## Channel layout
 
@@ -123,21 +141,26 @@ it.
 - Roles in filenames: `brief` and `close` (planner), `claim` and `result`
   (executor). Within one turn number, `claim` sorts before `result`, which
   matches their order in time.
+- A brief and the turn answering it are different turn numbers. The executor
+  claims the next turn number after the brief's, and its claim and result
+  share that number. Above, brief `001` is answered by claim and result
+  `002`, and the planner's next brief is `003`.
 - A published turn file is immutable. Never renumber, rewrite, amend, or
-  delete one; corrections go in the next turn.
-- Relay artifacts ride the same branch as the work they describe. Its
-  published commits must not be rebased, squashed, or deleted while the run
-  is open, because every pinned sha in the run refers to them. The final sync
+  delete one; corrections go in the next turn. A turn file becomes published
+  when it reaches `origin`, not when it is written or committed.
+- Relay artifacts ride the same branch as the work they describe. That
+  branch's published commits must not be rebased, squashed, or deleted while
+  the run is open, because every pinned sha in the run refers to them. The final sync
   below replays unpublished commits only, which is why it stays inside this
-  rule.
+  rule. The freeze lifts when the close turn lands.
 - Squash-merge preserves every turn file in the merged tree, so commit
   *messages* are not load-bearing. Commit *shas* are, which is why the branch
   is frozen against rewriting for the life of the run.
 
 ## Turn file format
 
-Every turn file opens with at least these fields, in this order, delimited as
-front matter:
+Every turn file opens with front matter, delimited by `---` lines, carrying
+these fields in this order:
 
 ```
 ---
@@ -147,22 +170,38 @@ turn: 002
 role: executor
 agent: claude-code
 branch: feat/relay
-base: 4cf777c
+base: 1e85493c0a4b7d6f2e9a8c5b3d1f0e7a6c4b2d90
 answers: .agent/runs/2026-08-31-01/001-brief.md
 ---
 ```
 
-- `base` is the commit the turn was written against, read after the turn's
-  final sync.
-- `answers` is required on a result and names the brief it responds to.
-  `abandons` is optional on a brief and names a turn it supersedes.
+| Field | brief | claim | result | close |
+| --- | --- | --- | --- | --- |
+| `protocol` | required | required | required | required |
+| `run` | required | required | required | required |
+| `turn` | required | required | required | required |
+| `role` | `planner` | `executor` | `executor` | `planner` |
+| `agent` | required | required | required | required |
+| `subagents` | required | — | — | — |
+| `branch` | required | required | required | required |
+| `base` | required | required | required | required |
+| `answers` | — | — | required | — |
+| `abandons` | optional | — | — | — |
+
+- `base` is the commit the turn was written against: for a brief or close,
+  the `origin/<branch>` tip it was committed on; for a claim, `HEAD` at
+  preflight; for a result, `HEAD` after the turn's final sync.
+- Every sha, in front matter and in a handoff line, is the full 40-character
+  form. An abbreviation that later turns ambiguous fails
+  `git merge-base --is-ancestor` in a way that reads as a protocol violation.
+- `answers` names the brief the result responds to. `abandons` names a turn
+  the brief supersedes.
 - `agent` names the concrete agent implementation writing the turn, not its
   role. The handoff separately names the executor CLI, model, and reasoning
   level the user should launch.
-- `subagents` is required on a brief. It is the planner's optimal number of
-  delegated agents for that turn, written as a nonnegative integer and
-  excluding the primary executor. It immediately follows `agent` in brief
-  front matter and is omitted from claims, results, and close turns.
+- `subagents` is required on a brief. It is the planner's optimal number
+  of delegated agents for that turn, a nonnegative integer excluding the
+  primary executor.
 - If the two sides' `protocol:` values differ, the executor stops with
   `status: blocked` and `needs: protocol <version>`. Two parties on different
   rule sets must not proceed.
@@ -194,13 +233,85 @@ A result body states, in order:
 - Decisions and deviations from the brief, with reasons.
 - Open questions and the suggested next step.
 
+`relay/templates/` in the repository publishing this protocol holds a
+fill-in file for each turn kind. A planner that cannot run a linter can
+still copy a template.
+
+## Worked example
+
+Brief `001`, written by the planner:
+
+```
+---
+protocol: relay-v5
+run: 2026-08-31-01
+turn: 001
+role: planner
+agent: claude-web
+subagents: 0
+branch: feat/relay
+base: 4cf777c1b9e0a3d5f8c2b7a4e6d9f1c3a5b8e0d2
+---
+
+Objective: `wt status -q` reports the upstream of every clone in one
+tab-separated line per repository.
+
+Scope boundary: `python/wt/repos.py` and `python/wt/cli.py` only. Do not
+touch the slot registry or any test outside `tests/wt_unit.py`.
+
+Acceptance criteria: `wt status -q` prints one line per repository, fields
+tab-separated, no header; a clone with no upstream prints an empty field
+rather than being omitted.
+
+Verification: `python3 tests/wt_unit.py`
+
+Delegation plan: 0. One file pair, one seam; a second agent would contend
+for `cli.py` and cost more coordination than it saves.
+
+Context: `python/wt/repos.py` already computes upstream for `wt status`;
+this reuses that, it does not add a second query.
+
+When blocked: report the exact failing command and stop. Do not widen the
+scope to the slot registry to make a test pass.
+```
+
+Result `002`, written by the executor:
+
+```
+---
+protocol: relay-v5
+run: 2026-08-31-01
+turn: 002
+role: executor
+agent: claude-code
+branch: feat/relay
+base: 1e85493c0a4b7d6f2e9a8c5b3d1f0e7a6c4b2d90
+answers: .agent/runs/2026-08-31-01/001-brief.md
+---
+
+status: complete
+work: feat/relay@1e85493c0a4b7d6f2e9a8c5b3d1f0e7a6c4b2d90
+
+Files touched, by intent:
+- `python/wt/repos.py` — return upstream alongside branch and cleanliness.
+- `python/wt/cli.py` — `-q` formatting for the new field.
+- `tests/wt_unit.py` — the no-upstream case.
+
+Verification:
+- `python3 tests/wt_unit.py` — passed, 41 checks.
+- `./tests/wt.sh` — skipped; the brief scoped verification to the unit
+  checks and the shell suite needs a tmux the container lacks.
+
+Decisions and deviations: none.
+
+Open questions: none. Suggested next step: close the run.
+```
+
 ## Seed briefs
 
-A brief that opens a run for new work (a new project, feature, or objective
-not continuing a prior run) is a seed brief. The planning conversation behind
-it is exploration the repository must never see; the seed is the only thing
-that crosses. It is the run's foundation, not a record of the planning that
-produced it.
+A brief that opens a run for new work — a new project, feature, or objective
+not continuing a prior run — is a seed brief. The planning conversation
+behind it is exploration the repository must never see.
 
 - Sanity-check the request first: the objective is a user-visible outcome,
   the scope is bounded, and acceptance criteria can be checkable. If the
@@ -210,12 +321,9 @@ produced it.
   planning conversation had never happened. Rebuild from scratch rather than
   editing down; editing down leaves residue.
 - The seed carries no abandoned ideas, no declined paths, no ledger of
-  alternatives considered. It does not refute what was rejected; it stands
-  on what survived. It brings in only what is necessary, and never justifies
-  a choice against the original conversation.
-- Every context entry must bind the executor's work: an exact path, a
-  constraint, or a binding decision. Context exists to make the work
-  correct, not to explain the plan.
+  alternatives considered, and never justifies a choice against the original
+  conversation. Every context entry must bind the executor's work: an exact
+  path, a constraint, or a binding decision.
 - Before publishing, audit the draft against the planning conversation for
   leaked exploration. If any sentence only makes sense with that
   conversation in hand, the seed is not clean yet.
@@ -231,37 +339,40 @@ user to paste. It begins with `#` so that a paste into a shell prompt is
 inert as a comment rather than a half-executed command.
 
 ```
-# relay relay-v5 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v5/relay/PROTOCOL.md, initialize the clean checkout on feat/relay as it permits, run preflight, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, claim the turn, and execute that brief
+# relay relay-v5 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | brief 001 | claim 002 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v5/relay/PROTOCOL.md, initialize the clean checkout on feat/relay as it permits, run preflight, then git show 4cf777c1b9e0a3d5f8c2b7a4e6d9f1c3a5b8e0d2:.agent/runs/2026-08-31-01/001-brief.md, claim turn 002, and execute that brief
 ```
 
-Presentation requirement:
+Content rules:
 
-- The handoff itself is exactly one physical line beginning with `#`.
-- In user-visible chat, render that line inside a fenced code block so
-  Markdown does not interpret `#` as a heading.
-- The fenced code block contains only the handoff line: no prompt marker, no
-  wrapping text, no second line, and no shell-language annotation.
-- Explanatory prose, if any, must appear outside the fenced block.
-
-- Substitute a real sha. Never emit a literal `<sha>` placeholder.
+- `brief` names the turn the executor reads; `claim` names the turn it
+  claims. The planner states both rather than leaving arithmetic to the
+  executor, and `claim` is always the next turn number after the brief's.
+- `agent` names the executor CLI to launch (`claude`, `codex`, `droid`, or
+  similar), settled with the user in the preconditions.
+- `model` names the model identifier or configured alias that the named CLI
+  accepts, settled with the user in the preconditions.
+- `reasoning` names the reasoning or effort level that the named CLI accepts,
+  settled with the user in the preconditions.
+- `state` is `clean` or `resume`: `clean` starts a fresh session, `resume`
+  goes to the live session already holding this run. Every brief is
+  self-sufficient at its pinned commit either way, so `resume` is a cost hint
+  addressed to the user, not a parser. An executor missing context the brief
+  assumed reports `blocked` with `needs:` rather than reading around for it.
+- Substitute a real 40-character sha. Never emit a literal `<sha>`
+  placeholder.
 - Keep it ASCII. Dashes and quotes that survive one clipboard may not survive
   the next.
 - Never emit a shell command with the brief or prompt embedded as a quoted
   argument. Generated text inside shell quoting is a break-out risk.
-- The `<agent>` field is required and names the executor CLI to launch
-  (`claude`, `codex`, `droid`, or similar), settled with the user in the
-  preconditions.
-- The `<model>` field is required and names the model identifier or configured
-  alias that the named CLI accepts, settled with the user in the preconditions.
-- The `<reasoning>` field is required and names the reasoning or effort level
-  that the named CLI accepts, settled with the user in the preconditions.
-- The `<state>` field is required and is one of `clean` or `resume`: `clean`
-  means start a fresh session; `resume` means paste into the live session
-  already holding this run. That field addresses the user, not a parser.
-  Every brief is self-sufficient at its pinned commit either way, so
-  `resume` is a cost hint only. An executor that finds itself missing
-  context the brief assumed reports `blocked` with `needs:` rather than
-  reading around for it.
+
+Presentation rules:
+
+- The handoff is exactly one physical line beginning with `#`.
+- In user-visible chat, render it inside a fenced code block so Markdown does
+  not interpret `#` as a heading.
+- The fenced block contains only the handoff line: no prompt marker, no
+  wrapping text, no second line, and no shell-language annotation.
+- Explanatory prose, if any, appears outside the fenced block.
 
 ## Context boundary
 
@@ -273,7 +384,7 @@ boundary is asymmetric, because the two roles need different views.
   any turn file within its own run. It may not list or read any other run
   directory.
 - The executor reads the pinned brief and nothing else from the run tree. It
-  derives its turn number from the handoff line rather than by enumeration.
+  takes its turn numbers from the handoff line rather than by enumeration.
 - Checking whether a path exists is not reading it. Both roles may test for a
   specific known filename.
 - A brief that depends on an earlier turn names it by exact path and commit.
@@ -286,16 +397,20 @@ boundary is asymmetric, because the two roles need different views.
 
 ## Turn allocation and the single-writer rule
 
-Both roles allocate from one counter, so allocation needs a rule rather than
-a hope. At most one turn may be outstanding per run.
+Both roles allocate from one counter. At most one turn may be outstanding per
+run.
 
 - The planner may not allocate a new turn number until either the expected
   result exists at `origin`, or it has published a brief whose `abandons:`
   field names the outstanding turn, which burns that number.
 - The executor claims its number before doing any work, by pushing
-  `<nnn>-claim.md` carrying the front matter above. A rejected or conflicting
-  claim push means the number is already claimed: report the replay and stop
-  without redoing the work.
+  `<nnn>-claim.md` carrying the front matter above.
+- A rejected claim push is not by itself proof of a replay: the ref may have
+  moved for another reason. On rejection, fetch and test whether
+  `<nnn>-claim.md` exists at `origin/<branch>`. If it does, the turn is
+  already owned: report the replay and stop without redoing the work. If it
+  does not, run the final sync and retry the push exactly once; a second
+  rejection is `push-rejected`.
 - Lexicographic filename order is allocation order, and under this rule
   allocation order is publication order. It is not otherwise a chronological
   guarantee.
@@ -309,9 +424,9 @@ a hope. At most one turn may be outstanding per run.
   tip, create the run directory, write the brief, commit on that tip, push,
   and only then emit the handoff line. A handoff line pointing at an unpushed
   commit is a broken handoff.
-- A handoff line that omits the `agent`, `model`, `reasoning`, or `state`
-  field is invalid; re-emit it. Never launch the user toward a session
-  without all four.
+- A handoff line that omits `agent`, `model`, `reasoning`, `state`, `brief`,
+  or `claim` is invalid; re-emit it. Never launch the user toward a session
+  without all six.
 - A brief that omits `subagents`, gives a range instead of one nonnegative
   integer, or does not explain the count in its Delegation plan is invalid;
   correct it before publishing.
@@ -341,8 +456,9 @@ a hope. At most one turn may be outstanding per run.
 - Read the protocol, initialize the workspace when necessary, and run the
   preflight. Then read the brief at the pinned commit and nothing else from
   the run tree, verify its `branch:` matches the handoff, claim the turn
-  number, and execute the brief. Reading is not execution and may precede the
-  claim; no edit or other brief work may.
+  number the handoff's `claim` field names, and execute the brief. Reading
+  is not execution and may precede the claim; no edit or other brief work
+  may.
 - The active repository's own instructions and any higher-authority
   instructions outrank both this protocol and the brief. When they conflict,
   follow the higher authority and record the conflict in the result instead
@@ -358,10 +474,19 @@ a hope. At most one turn may be outstanding per run.
 - Publish in this order: the final sync below, then re-verify that the brief
   still byte-matches `origin/<branch>`, then read the final shas, then write
   the result, then commit the result on its own, then push. Recording shas
-  before the sync would record shas a rebase within it destroys.
-- A brief that no longer byte-matches `origin/<branch>` is the protocol
-  violation to report. Do not rely on a rebase conflict to reveal it; a
-  rewrite the executor is not touching applies cleanly and silently.
+  before the sync would record shas a rebase within it destroys. One push
+  carries the work and the result together, so a session that dies before
+  the result publishes nothing rather than half a turn.
+- Verify the byte-match with
+  `git diff --quiet <brief-sha>:<path> origin/<branch>:<path>`. A brief that
+  no longer byte-matches is the protocol violation to report. Do not rely on
+  a rebase conflict to reveal it; a rewrite the executor is not touching
+  applies cleanly and silently.
+- If the final push is rejected, the result commit is not yet published, so
+  it may be rebuilt: sync again, re-read the shas, rewrite the result file
+  with the new values, and push. Immutability begins at `origin`, and a
+  result carrying shas the sync destroyed is worse than a rewritten one. A
+  second rejection is `push-rejected`.
 - Report the result even when the work failed. A missing result file is
   indistinguishable from a dead session and strands the run. If publishing
   itself is what failed, use the blocked channel.
@@ -376,7 +501,7 @@ command rebases unconditionally, so it flattens deliberate merge ancestry and
 rewrites work the branch was already carrying correctly. Do not use it in a
 relay run.
 
-With the work committed and the tree otherwise clean:
+With the work committed and the tracked tree clean:
 
 1. Record the pre-sync `HEAD` with `git rev-parse HEAD`.
 2. `git fetch origin`.
@@ -384,16 +509,18 @@ With the work committed and the tree otherwise clean:
    the branch is already synchronized: do not rebase. Its merge ancestry is
    intentional and must be preserved, and the push that follows is a
    fast-forward.
-4. Otherwise the branch has diverged, and only the unpublished range is
+4. Otherwise, if `HEAD` is an ancestor of `origin/<branch>`, the branch is
+   merely behind: `git merge origin/<branch> --ff-only` and stop. No rebase.
+5. Otherwise the branch has diverged, and only the unpublished range is
    replayed. If `git rev-list --merges HEAD ^origin/<branch>` names any
    commit, that range carries intentional merges: use
    `git rebase --rebase-merges origin/<branch>`. If it names none, the
    unpublished history is linear and a plain `git rebase origin/<branch>` is
    correct.
-5. On any conflict, run `git rebase --abort`, confirm `HEAD` is back at the
-   sha from step 1, and report. Never leave the user's checkout in a
-   mid-rebase state, and never resolve a conflict in another turn's commits
-   to get a push through.
+6. On any conflict, run `git rebase --abort`, confirm `HEAD` is back at the
+   sha from step 1, and report `sync-conflict`. Never leave the user's
+   checkout in a mid-rebase state, and never resolve a conflict in another
+   turn's commits to get a push through.
 
 Never rewrite a commit already published to `origin`. Rebasing onto
 `origin/<branch>` touches only the unpublished range, which is what keeps
@@ -401,7 +528,7 @@ that rule and the step 3 exemption consistent.
 
 `--rebase-merges` recreates merges instead of replaying their recorded
 result, so a rebuilt merge can differ from the one the executor verified.
-After any step 4 rebase, re-run the brief's verification before writing the
+After any step 5 rebase, re-run the brief's verification before writing the
 result; checks that ran against the pre-sync tree no longer prove the tree
 being pushed.
 
@@ -411,10 +538,23 @@ The one exception to the rule that the user carries no content, needed
 because the executor's report channel is the same channel that failed.
 
 - The executor prints exactly one line:
-  `relay blocked <run> <turn> <token>`, where `<token>` is one of
-  `push-rejected`, `no-credentials`, `hooks-rejected`, `preflight-failed`, or
-  `brief-mutated`.
+  `relay blocked <run> <turn> <token>`, where `<turn>` is the claim turn and
+  `<token>` names the condition. Each token has one trigger:
+
+| Token | Trigger |
+| --- | --- |
+| `preflight-failed` | Any workspace-initialization or preflight step failed |
+| `brief-unreadable` | The pinned brief does not resolve or cannot be read |
+| `brief-mutated` | The brief no longer byte-matches `origin/<branch>` |
+| `claim-replay` | The claim file is already present at `origin` |
+| `sync-conflict` | The final sync conflicted; the rebase was aborted |
+| `push-rejected` | A push was rejected twice, after a sync and one retry |
+| `no-credentials` | The checkout cannot authenticate to `origin` |
+| `hooks-rejected` | A commit or push hook refused the turn |
+
 - The user may relay that line verbatim, and nothing else.
+- Tooling may distinguish finer conditions internally, but only these tokens
+  cross the user channel.
 - On `done` with no result file present, the planner asks once for that line,
   records the outcome in a turn file, and then closes or re-briefs. It does
   not wait indefinitely on a result that cannot arrive.
@@ -434,9 +574,32 @@ because the executor's report channel is the same channel that failed.
   hard on an unclean rebase state.
 - Abandonment is explicit: the planner publishes a brief whose `abandons:`
   field names the abandoned turn, and never rewrites the original.
+- A result that lands for an already-abandoned turn is informational only.
+  Record it in the run, never resume from it: the number was burned when the
+  abandoning brief published, and a zombie session's push does not unburn it.
 - Duplicate paste is narrowed by the claim push, not eliminated. Treat a
-  rejected or conflicting claim as proof the turn is already owned.
+  claim file already present at `origin` as proof the turn is owned.
 - Uncertain whether a push landed: verify against `origin` before acting. An
   unproved push is not a published turn.
 - A pinned sha that no longer resolves means the branch was rewritten while
   the run was open. Stop and report; do not guess at a replacement.
+
+## Tooling
+
+The procedures above are normative and executable by hand; the commands are
+written out so an executor with nothing but git can follow them. Where the
+`relay` command from the repository publishing this protocol is installed,
+it runs the mechanical ones deterministically — `relay init`,
+`relay preflight`, `relay sync`, `relay claim`, `relay prepare`,
+`relay publish`, and `relay lint` — reporting the blocked-channel tokens as
+exit codes instead of leaving each executor to reinvent the predicates.
+
+- The tool is an accelerator, never an authority. This document decides what
+  the steps are; a disagreement between the two is a defect in the tool.
+- It is pinned to one protocol version and refuses a mismatched `--protocol`.
+  The document is immutable per version and the tool is not, so version skew
+  must be a hard stop rather than a silent behavior change.
+- Its absence is not a blocker. An executor without it follows the same steps
+  by hand and says so in the result.
+- Nothing in a run may depend on the tool being present, and no handoff line
+  may instruct the user to install it.

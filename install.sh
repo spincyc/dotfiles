@@ -174,6 +174,8 @@ managed_links="
 .config/glow/glow.yml:.config/glow/glow.yml
 bin/wt:.local/bin/wt
 python/wt:.local/lib/python/wt
+bin/relay:.local/bin/relay
+python/relay:.local/lib/python/relay
 AI_GUIDANCE.md:.codex/AGENTS.md
 ai-guidance:.codex/ai-guidance
 AI_GUIDANCE.md:.claude/CLAUDE.md

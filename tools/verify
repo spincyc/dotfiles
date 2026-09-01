@@ -189,8 +189,10 @@ def check_relay_protocol() -> None:
         "Authorization",
         "Preconditions",
         "Workspace initialization",
+        "Preflight",
         "Channel layout",
         "Turn file format",
+        "Worked example",
         "Seed briefs",
         "Handoff line",
         "Context boundary",
@@ -212,15 +214,15 @@ def check_relay_protocol() -> None:
         raise RuntimeError(f"{path.name} does not declare a protocol version")
     version = version_match.group(1)
     required_phrases = [
-        "`<agent>` field is required",
-        "`<model>` field is required",
-        "`<reasoning>` field is required",
-        "`<state>` field is required",
+        "omits `agent`, `model`, `reasoning`, `state`, `brief`,",
         "`subagents` is required on a brief",
         "Before formal preflight",
         "`git switch --track origin/<branch>`",
         "`git merge-base --is-ancestor origin/<branch> HEAD`",
         "`git rebase --rebase-merges origin/<branch>`",
+        "`git status --porcelain --untracked-files=no`",
+        "the next turn number after the brief's",
+        "`sync-conflict`",
         "seed is not clean yet",
     ]
     missing = [phrase for phrase in required_phrases if phrase not in text]
@@ -237,6 +239,38 @@ def check_relay_protocol() -> None:
             f"{path.name} does not use {version} consistently: "
             + ", ".join(missing)
         )
+    if override:
+        # A stand-in document says nothing about the real templates.
+        return
+    # Each template must carry exactly the fields the document's table gives
+    # that turn kind, in the document's order. Hand-checking that is how the
+    # two drift apart.
+    rows = re.findall(r"^\| `(\w+)` \| (.+) \|$", text, flags=re.MULTILINE)
+    if not rows:
+        raise RuntimeError(f"{path.name} has no turn-file field table")
+    kinds = ("brief", "claim", "result", "close")
+    order = [name for name, _ in rows]
+    table = {
+        name: dict(zip(kinds, [cell.strip() for cell in cells.split("|")]))
+        for name, cells in rows
+    }
+    for kind in kinds:
+        template = REPO_ROOT / "relay" / "templates" / f"{kind}.md"
+        if not template.is_file():
+            raise RuntimeError(f"relay/templates/{kind}.md is missing")
+        body = template.read_text()
+        if f"protocol: {version}" not in body:
+            raise RuntimeError(
+                f"relay/templates/{kind}.md does not declare {version}"
+            )
+        front = body.split("---")[1] if body.count("---") >= 2 else ""
+        fields = re.findall(r"^(\w+):", front, flags=re.MULTILINE)
+        expected = [name for name in order if table[name][kind] != "\u2014"]
+        if fields != expected:
+            raise RuntimeError(
+                f"relay/templates/{kind}.md front matter is {fields}, "
+                f"but {path.name} documents {expected}"
+            )
 
 
 def check_tool_registry() -> None:
@@ -250,7 +284,10 @@ def check_tool_registry() -> None:
 
 
 def check_python_modules() -> None:
-    run([sys.executable, "-m", "compileall", "-q", "python", "bin/wt"])
+    run(
+        [sys.executable, "-m", "compileall", "-q", "python", "bin/wt",
+         "bin/relay"]
+    )
     for cache in (REPO_ROOT / "python").rglob("__pycache__"):
         shutil.rmtree(cache, ignore_errors=True)
 
@@ -262,6 +299,10 @@ def check_wt() -> None:
 
 def check_wt_unit() -> None:
     run([sys.executable, "tests/wt_unit.py"])
+
+
+def check_relay_unit() -> None:
+    run([sys.executable, "tests/relay_unit.py"])
 
 
 def check_profile() -> None:
@@ -332,6 +373,7 @@ def main() -> int:
         check_python_modules,
         check_wt,
         check_wt_unit,
+        check_relay_unit,
         check_profile,
     ]
     if len(sys.argv) > 2 and sys.argv[1] == "--only":
