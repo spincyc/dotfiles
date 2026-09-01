@@ -1,6 +1,6 @@
 # Agent relay protocol
 
-Version `relay-v2`.
+Version `relay-v3`.
 
 A planning agent with git write access and no useful shell in the user's
 checkout hands work to an executing agent that has one. Git is the only
@@ -8,7 +8,7 @@ channel between them. The exchange is committed to the work repository, so
 the record of how the repository was built stays in the repository.
 
 Canonical URL, pinned so both sides read identical rules:
-`https://raw.githubusercontent.com/spincyc/dotfiles/relay-v2/relay/PROTOCOL.md`
+`https://raw.githubusercontent.com/spincyc/dotfiles/relay-v3/relay/PROTOCOL.md`
 
 The user gives the planner that URL to open a run. The planner passes it on
 in the handoff line, which is how the executor finds it.
@@ -49,11 +49,11 @@ Binds both roles.
 ## Preconditions
 
 Before the first handoff, the planner confirms with the user: the repository
-identity, the executor agent to launch, the branch (not the default branch),
-that direct pushes to it are permitted, that `.agent/` is not ignored, that no
-commit hook rewrites or rejects markdown, that turn files are acceptable in
-that repository's permanent history, and that the executor's checkout has
-push credentials and a remote named `origin`.
+identity, the executor CLI, model, and reasoning level to launch, the branch
+(not the default branch), that direct pushes to it are permitted, that
+`.agent/` is not ignored, that no commit hook rewrites or rejects markdown,
+that turn files are acceptable in that repository's permanent history, and
+that the executor's checkout has push credentials and a remote named `origin`.
 
 The executor runs this preflight every turn, before editing anything:
 
@@ -108,7 +108,7 @@ front matter:
 
 ```
 ---
-protocol: relay-v2
+protocol: relay-v3
 run: 2026-08-31-01
 turn: 002
 role: executor
@@ -123,7 +123,13 @@ answers: .agent/runs/2026-08-31-01/001-brief.md
   final rebase.
 - `answers` is required on a result and names the brief it responds to.
   `abandons` is optional on a brief and names a turn it supersedes.
-- `agent` names the concrete model or CLI, not the role.
+- `agent` names the concrete agent implementation writing the turn, not its
+  role. The handoff separately names the executor CLI, model, and reasoning
+  level the user should launch.
+- `subagents` is required on a brief. It is the planner's optimal number of
+  delegated agents for that turn, written as a nonnegative integer and
+  excluding the primary executor. It immediately follows `agent` in brief
+  front matter and is omitted from claims, results, and close turns.
 - If the two sides' `protocol:` values differ, the executor stops with
   `status: blocked` and `needs: protocol <version>`. Two parties on different
   rule sets must not proceed.
@@ -136,6 +142,8 @@ A brief body states, in order:
 - Scope boundary — what the executor owns and what it must not touch.
 - Acceptance criteria — checkable conditions, not aspirations.
 - Verification — the exact smallest command(s) that prove the work.
+- Delegation plan — why the `subagents` count is optimal and, when nonzero,
+  the distinct parallel-safe lanes they should own.
 - Context — the paths, constraints, and prior decisions the executor needs,
   each earlier turn named by exact path and commit.
 - When blocked — what to report and what not to improvise.
@@ -190,7 +198,7 @@ user to paste. It begins with `#` so that a paste into a shell prompt is
 inert as a comment rather than a half-executed command.
 
 ```
-# relay relay-v2 | claude | clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: git fetch origin, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, read that brief and https://raw.githubusercontent.com/spincyc/dotfiles/relay-v2/relay/PROTOCOL.md, then execute
+# relay relay-v3 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: git fetch origin, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, read that brief and https://raw.githubusercontent.com/spincyc/dotfiles/relay-v3/relay/PROTOCOL.md, then execute
 ```
 
 - Substitute a real sha. Never emit a literal `<sha>` placeholder.
@@ -201,6 +209,10 @@ inert as a comment rather than a half-executed command.
 - The `<agent>` field is required and names the executor CLI to launch
   (`claude`, `codex`, `droid`, or similar), settled with the user in the
   preconditions.
+- The `<model>` field is required and names the model identifier or configured
+  alias that the named CLI accepts, settled with the user in the preconditions.
+- The `<reasoning>` field is required and names the reasoning or effort level
+  that the named CLI accepts, settled with the user in the preconditions.
 - The `<state>` field is required and is one of `clean` or `resume`: `clean`
   means start a fresh session; `resume` means paste into the live session
   already holding this run. That field addresses the user, not a parser.
@@ -255,8 +267,12 @@ a hope. At most one turn may be outstanding per run.
   tip, create the run directory, write the brief, commit on that tip, push,
   and only then emit the handoff line. A handoff line pointing at an unpushed
   commit is a broken handoff.
-- A handoff line that omits the `agent` or `state` field is invalid; re-emit
-  it. Never launch the user toward a session without both.
+- A handoff line that omits the `agent`, `model`, `reasoning`, or `state`
+  field is invalid; re-emit it. Never launch the user toward a session
+  without all four.
+- A brief that omits `subagents`, gives a range instead of one nonnegative
+  integer, or does not explain the count in its Delegation plan is invalid;
+  correct it before publishing.
 - On a rejected push, re-read the tip and rebuild the commit on it. Never
   force-update a ref, and never assume a tip observed earlier is still
   current.
@@ -289,6 +305,9 @@ a hope. At most one turn may be outstanding per run.
 - The handoff line is a brief, not a user message: do not ingest or capture
   it, and do not write the local work ledger. Relay runs are outside ledger
   scope; the run record is the run directory.
+- Treat `subagents` as the planner's scheduling recommendation, subject to
+  higher-authority instructions, available capacity, and actual parallel-safe
+  work. Record any deviation and its reason in the result.
 - Commit by explicit pathspec. Never `git commit -a`, never `git add -A`, and
   never commit a path the brief did not put in scope.
 - Publish in this order: `git pull --rebase`, then re-verify that the brief

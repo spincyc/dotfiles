@@ -203,16 +203,34 @@ def check_relay_protocol() -> None:
     missing = [name for name in required_sections if name not in headings]
     if missing:
         raise RuntimeError(f"{path.name} lacks sections: " + ", ".join(missing))
-    if not re.search(r"^Version `relay-v\d+`\.$", text, flags=re.MULTILINE):
+    version_match = re.search(
+        r"^Version `(relay-v\d+)`\.$", text, flags=re.MULTILINE
+    )
+    if not version_match:
         raise RuntimeError(f"{path.name} does not declare a protocol version")
+    version = version_match.group(1)
     required_phrases = [
         "`<agent>` field is required",
+        "`<model>` field is required",
+        "`<reasoning>` field is required",
         "`<state>` field is required",
+        "`subagents` is required on a brief",
         "seed is not clean yet",
     ]
     missing = [phrase for phrase in required_phrases if phrase not in text]
     if missing:
         raise RuntimeError(f"{path.name} lacks phrases: " + ", ".join(missing))
+    required_version_uses = [
+        f"protocol: {version}",
+        f"/{version}/relay/PROTOCOL.md",
+        f"# relay {version} |",
+    ]
+    missing = [value for value in required_version_uses if value not in text]
+    if missing:
+        raise RuntimeError(
+            f"{path.name} does not use {version} consistently: "
+            + ", ".join(missing)
+        )
 
 
 def check_tool_registry() -> None:
