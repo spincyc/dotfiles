@@ -1,6 +1,6 @@
 # Agent relay protocol
 
-Version `relay-v1`.
+Version `relay-v2`.
 
 A planning agent with git write access and no useful shell in the user's
 checkout hands work to an executing agent that has one. Git is the only
@@ -8,7 +8,7 @@ channel between them. The exchange is committed to the work repository, so
 the record of how the repository was built stays in the repository.
 
 Canonical URL, pinned so both sides read identical rules:
-`https://raw.githubusercontent.com/spincyc/dotfiles/relay-v1/relay/PROTOCOL.md`
+`https://raw.githubusercontent.com/spincyc/dotfiles/relay-v2/relay/PROTOCOL.md`
 
 The user gives the planner that URL to open a run. The planner passes it on
 in the handoff line, which is how the executor finds it.
@@ -49,11 +49,11 @@ Binds both roles.
 ## Preconditions
 
 Before the first handoff, the planner confirms with the user: the repository
-identity, the branch (not the default branch), that direct pushes to it are
-permitted, that `.agent/` is not ignored, that no commit hook rewrites or
-rejects markdown, that turn files are acceptable in that repository's
-permanent history, and that the executor's checkout has push credentials and
-a remote named `origin`.
+identity, the executor agent to launch, the branch (not the default branch),
+that direct pushes to it are permitted, that `.agent/` is not ignored, that no
+commit hook rewrites or rejects markdown, that turn files are acceptable in
+that repository's permanent history, and that the executor's checkout has
+push credentials and a remote named `origin`.
 
 The executor runs this preflight every turn, before editing anything:
 
@@ -153,6 +153,36 @@ A result body states, in order:
 - Decisions and deviations from the brief, with reasons.
 - Open questions and the suggested next step.
 
+## Seed briefs
+
+A brief that opens a run for new work (a new project, feature, or objective
+not continuing a prior run) is a seed brief. The planning conversation behind
+it is exploration the repository must never see; the seed is the only thing
+that crosses. It is the run's foundation, not a record of the planning that
+produced it.
+
+- Sanity-check the request first: the objective is a user-visible outcome,
+  the scope is bounded, and acceptance criteria can be checkable. If the
+  request itself is not yet coherent, resolve that with the user before
+  opening a run.
+- Generate the seed from the request alone, then check the result as if the
+  planning conversation had never happened. Rebuild from scratch rather than
+  editing down; editing down leaves residue.
+- The seed carries no abandoned ideas, no declined paths, no ledger of
+  alternatives considered. It does not refute what was rejected; it stands
+  on what survived. It brings in only what is necessary, and never justifies
+  a choice against the original conversation.
+- Every context entry must bind the executor's work: an exact path, a
+  constraint, or a binding decision. Context exists to make the work
+  correct, not to explain the plan.
+- Before publishing, audit the draft against the planning conversation for
+  leaked exploration. If any sentence only makes sense with that
+  conversation in hand, the seed is not clean yet.
+
+Seed discipline and `abandons:` never mix: `abandons:` operates on published
+turns mid-run, seed discipline governs the planner's own unpublished pre-run
+planning, and a seed brief carries no `abandons:` field.
+
 ## Handoff line
 
 The planner emits one physical line, containing no newline character, for the
@@ -160,7 +190,7 @@ user to paste. It begins with `#` so that a paste into a shell prompt is
 inert as a comment rather than a half-executed command.
 
 ```
-# relay relay-v1 | claude | clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: git fetch origin, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, read that brief and https://raw.githubusercontent.com/spincyc/dotfiles/relay-v1/relay/PROTOCOL.md, then execute
+# relay relay-v2 | claude | clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: git fetch origin, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, read that brief and https://raw.githubusercontent.com/spincyc/dotfiles/relay-v2/relay/PROTOCOL.md, then execute
 ```
 
 - Substitute a real sha. Never emit a literal `<sha>` placeholder.
@@ -168,10 +198,14 @@ inert as a comment rather than a half-executed command.
   the next.
 - Never emit a shell command with the brief or prompt embedded as a quoted
   argument. Generated text inside shell quoting is a break-out risk.
-- `clean` means start a fresh session; `continue` means paste into the live
-  session already holding this run. That field addresses the user, not a
-  parser. Every brief is self-sufficient at its pinned commit either way, so
-  `continue` is a cost hint only. An executor that finds itself missing
+- The `<agent>` field is required and names the executor CLI to launch
+  (`claude`, `codex`, `droid`, or similar), settled with the user in the
+  preconditions.
+- The `<state>` field is required and is one of `clean` or `resume`: `clean`
+  means start a fresh session; `resume` means paste into the live session
+  already holding this run. That field addresses the user, not a parser.
+  Every brief is self-sufficient at its pinned commit either way, so
+  `resume` is a cost hint only. An executor that finds itself missing
   context the brief assumed reports `blocked` with `needs:` rather than
   reading around for it.
 
@@ -191,7 +225,7 @@ boundary is asymmetric, because the two roles need different views.
 - A brief that depends on an earlier turn names it by exact path and commit.
   It never says "review the previous runs" or leaves the executor to work out
   which history is relevant.
-- A `continue` session already holds its earlier turns in context, which is
+- A `resume` session already holds its earlier turns in context, which is
   not a reason to re-read them from disk.
 - When earlier context turns out to be genuinely required, ask for the exact
   path instead of reading around to find it.
@@ -221,6 +255,8 @@ a hope. At most one turn may be outstanding per run.
   tip, create the run directory, write the brief, commit on that tip, push,
   and only then emit the handoff line. A handoff line pointing at an unpushed
   commit is a broken handoff.
+- A handoff line that omits the `agent` or `state` field is invalid; re-emit
+  it. Never launch the user toward a session without both.
 - On a rejected push, re-read the tip and rebuild the commit on it. Never
   force-update a ref, and never assume a tip observed earlier is still
   current.
@@ -287,7 +323,9 @@ because the executor's report channel is the same channel that failed.
 
 - Lost planner context: the planner's own run directory, in lexicographic
   order, is the authoritative record. Reconstruct from it rather than from
-  conversation memory, and still not from other runs.
+  conversation memory, and still not from other runs. A clean seed brief is
+  what makes this reconstruction work: it is sufficient to restart the run
+  without the planning conversation that produced it.
 - A mid-turn death leaves one of several residues: a claim with no result,
   work commits pushed with no result, a result pushed before the user
   acknowledged it, or a checkout abandoned mid-rebase. Absence of a result

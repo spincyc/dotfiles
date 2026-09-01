@@ -190,6 +190,7 @@ def check_relay_protocol() -> None:
         "Preconditions",
         "Channel layout",
         "Turn file format",
+        "Seed briefs",
         "Handoff line",
         "Context boundary",
         "Turn allocation and the single-writer rule",
@@ -204,6 +205,14 @@ def check_relay_protocol() -> None:
         raise RuntimeError(f"{path.name} lacks sections: " + ", ".join(missing))
     if not re.search(r"^Version `relay-v\d+`\.$", text, flags=re.MULTILINE):
         raise RuntimeError(f"{path.name} does not declare a protocol version")
+    required_phrases = [
+        "`<agent>` field is required",
+        "`<state>` field is required",
+        "seed is not clean yet",
+    ]
+    missing = [phrase for phrase in required_phrases if phrase not in text]
+    if missing:
+        raise RuntimeError(f"{path.name} lacks phrases: " + ", ".join(missing))
 
 
 def check_tool_registry() -> None:
