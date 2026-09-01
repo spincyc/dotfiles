@@ -8,6 +8,7 @@ reference rules are enforced here too.
 
 import os
 import re
+from collections.abc import Iterable
 from pathlib import Path
 
 from . import gitcmd
@@ -61,7 +62,7 @@ def valid_branch(name: str) -> bool:
 
 
 def normalize_workspace(value: str, project: str | None) -> str:
-    """Turn "slug" or "project/slug" into "project/slug"."""
+    """Turn a slug or stacked name into ``project/slug[/child...]``."""
     trimmed = value.rstrip("/")
     parts = trimmed.split("/")
     if len(parts) == 1:
@@ -71,7 +72,7 @@ def normalize_workspace(value: str, project: str | None) -> str:
                 f"(or set WT_PROJECT)"
             )
         parts = [project, parts[0]]
-    if len(parts) != 2 or not all(is_safe_component(part) for part in parts):
+    if len(parts) < 2 or not all(is_safe_component(part) for part in parts):
         raise WtError(f"not a usable workspace name: {value}")
     # Whether the name makes a usable *branch* is asked at creation, not
     # here: this function also resolves workspaces that already exist, and a
@@ -81,13 +82,22 @@ def normalize_workspace(value: str, project: str | None) -> str:
 
 
 def split_workspace(name: str) -> tuple[str, str]:
-    """Split a normalised workspace name into project and slug."""
+    """Split a normalised name into its project and complete slug stack."""
     project, _, slug = name.partition("/")
     return project, slug
 
 
-def workspace_from_path(path: Path, root: Path) -> str | None:
-    """Return the workspace containing path, or None when it is outside."""
+def workspace_from_path(
+    path: Path,
+    root: Path,
+    workspace_names: Iterable[str] | None = None,
+) -> str | None:
+    """Return the deepest workspace containing path, or None when outside.
+
+    Without an inventory this keeps the historical two-component answer.
+    Callers that know the existing workspace names pass them so a path below
+    a stacked workspace resolves to its leaf rather than its group.
+    """
     try:
         resolved_root = root.resolve(strict=True)
         resolved_path = Path(path).resolve(strict=True)
@@ -99,6 +109,13 @@ def workspace_from_path(path: Path, root: Path) -> str | None:
         return None
     parts = relative.parts
     if len(parts) < 2:
+        return None
+    if workspace_names is not None:
+        existing = set(workspace_names)
+        for length in range(len(parts), 1, -1):
+            candidate = "/".join(parts[:length])
+            if candidate in existing:
+                return candidate
         return None
     return f"{parts[0]}/{parts[1]}"
 

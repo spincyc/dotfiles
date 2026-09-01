@@ -23,7 +23,7 @@ from .errors import (
 )
 
 USAGE = """\
-Usage: wt [claude|codex|droid] [<project>/]<slug> [agent-args...]
+Usage: wt [claude|codex|droid] [<project>/]<slug>[/<child>...] [agent-args...]
        wt <verb> [<workspace>] [args...]
 
 Launch:
@@ -33,8 +33,11 @@ Launch:
   wt telos/agent-sync             Use $WT_AGENT (default claude)
   wt agent-sync                   A bare slug takes $WT_PROJECT
 
-A workspace is <project>/<slug>, and every repository cloned into it works on
-the branch feature/<slug> ($WT_BRANCH_PREFIX/<slug>).
+A workspace is a leaf named <project>/<slug>[/<child>...]. Intermediate
+components group a stack of workspaces. Every repository in a leaf works on
+feature/<slug>[/<child>...] ($WT_BRANCH_PREFIX plus the complete slug stack).
+Existing leaves may be selected by full name, branch, slug stack, unique leaf,
+or unambiguous component prefixes.
 
 Verbs:
   ls [-q]                         List workspaces and the repos they hold;
@@ -94,7 +97,7 @@ $WT_ROOT/.agents for as long as it runs, which is how the verbs above know
 not to delete a workspace out from under it.
 
 Exported into the agent:
-  WT_WORKSPACE       The workspace name, <project>/<slug>
+  WT_WORKSPACE       The complete workspace name
   WT_WORKSPACE_DIR   Its absolute path
   WT_BRANCH          The workspace branch, for git push -u origin "$WT_BRANCH"
   WT_AGENT_SLOT      Which slot this agent holds
@@ -159,12 +162,11 @@ def _only_workspace(
 ) -> workspaces.Workspace:
     """The workspace a verb was pointed at, with no arguments left over.
 
-    A name that is shaped like a workspace is treated as one even when it
-    does not exist, so a typo says "no such workspace" instead of falling
-    through to the current one and then blaming the argument count.
+    A supplied selector always names the target; only an omitted one falls
+    back to the current workspace.
     """
-    if args and workspaces.workspace_reference(config, args[0]):
-        workspace = workspaces.named(config, args[0])
+    if args:
+        workspace = workspaces.select(config, args[0])
         rest = args[1:]
     else:
         workspace, rest = workspaces.resolve(config, args)
@@ -182,7 +184,7 @@ def _named_target(
         raise UsageError(f"{verb} takes only a workspace")
     if not args:
         return None
-    workspace = workspaces.named(config, args[0])
+    workspace = workspaces.select(config, args[0])
     workspace.require()
     return workspace
 
@@ -214,7 +216,9 @@ def cmd_ls(config: Config, args: list[str]) -> int:
 def cmd_new(config: Config, args: list[str]) -> int:
     force, args = _take_force(args)
     if args:
-        workspace = workspaces.named(config, args[0])
+        workspace = workspaces.reuse_or_named(
+            config, args[0], abbreviate=False
+        )
         if args[1:]:
             raise UsageError("new takes only a workspace")
     else:
@@ -259,7 +263,7 @@ def cmd_clone(config: Config, args: list[str]) -> int:
     named, args = _take_option(args, "-w", "--workspace")
     owner, args = _take_option(args, "-o", "--owner")
     if named is not None:
-        workspace, rest = workspaces.named(config, named), args
+        workspace, rest = workspaces.reuse_or_named(config, named), args
     else:
         workspace, rest = workspaces.resolve(config, args)
     if not rest:
@@ -379,13 +383,12 @@ def _fan_out_target(
 
     These verbs take arbitrary trailing arguments, and a command argument
     looks exactly like a workspace name — `wt exec src/build.sh` is not a
-    request about a workspace called `src/build.sh`. So the workspace is
-    still recognised by existing, and `-w` is how you name one that does
-    not, or one a mistyped name would otherwise miss silently.
+    request about a workspace called `src/build.sh`. So only a selector that
+    resolves to an existing workspace is inferred; `-w` names one explicitly.
     """
     named, args = _take_option(args, "-w", "--workspace")
     if named is not None:
-        workspace, rest = workspaces.named(config, named), args
+        workspace, rest = workspaces.select(config, named), args
     else:
         workspace, rest = workspaces.resolve(config, args)
     workspace.require()
@@ -716,7 +719,13 @@ def cmd_sweep(config: Config, args: list[str]) -> int:
     """
     dry_run, args = _take_dry_run(args)
     named = _named_target(config, args, "sweep")
-    targets = [named] if named else workspaces.listing(config)
+    targets = [named] if named else sorted(
+        workspaces.listing(config),
+        key=lambda workspace: (
+            -len(Path(workspace.name).parts),
+            workspace.name,
+        ),
+    )
     if not targets:
         print(f"No workspaces under {config.root}")
         return 0
@@ -769,10 +778,11 @@ def cmd_sweep(config: Config, args: list[str]) -> int:
             continue
         print(f"{word:<9}{workspace.name}")
         removed += 1
-        emptied.append(workspace.project)
+        emptied.append(workspace.name)
 
-    for project in workspaces.prune_projects(config, emptied, dry_run=dry_run):
-        print(f"{'pruned':<9}{project}  empty project")
+    for group in workspaces.prune_groups(config, emptied, dry_run=dry_run):
+        kind = "project" if "/" not in group else "group"
+        print(f"{'pruned':<9}{group}  empty {kind}")
     tail = f", {damaged} damaged" if damaged else ""
     print(
         f"{removed} {'to remove' if dry_run else 'removed'}, {kept} kept{tail}"
@@ -793,7 +803,7 @@ def cmd_rm(config: Config, args: list[str]) -> int:
     force, args = _take_force(args)
     if len(args) != 1:
         raise UsageError("rm needs exactly one workspace")
-    workspace = workspaces.named(config, args[0])
+    workspace = workspaces.select(config, args[0])
     busy = _require_slot_view(config)
     try:
         removed = workspace.remove(force=force, busy=busy)
@@ -807,6 +817,10 @@ def cmd_rm(config: Config, args: list[str]) -> int:
             f"{error.message}; use wt rm --force to discard it"
         ) from error
     print(f"removed  {removed}")
+    if len(Path(workspace.name).parts) > 2:
+        for group in workspaces.prune_groups(config, [workspace.name]):
+            kind = "project" if "/" not in group else "group"
+            print(f"{'pruned':<9}{group}  empty {kind}")
     return 0
 
 
@@ -834,17 +848,17 @@ def agent_environment(
 def launch(config: Config, agent: str, args: list[str]) -> int:
     """Create or reuse the workspace, take a slot, and become the agent.
 
-    A name that names nothing is created, including one a finger-slip away
-    from an existing workspace: launching is how a workspace comes into
-    being, and second-guessing the name means `wt new` first for every new
-    line of work whose slug happens to resemble the last one.
+    A selector that uniquely abbreviates an existing workspace reuses it. A
+    name matching nothing is still created, including one a finger-slip away
+    from an existing leaf; component-prefix matching does not treat general
+    spelling similarity as identity.
     """
     if not args:
         raise UsageError(f"{agent} needs a workspace")
     if shutil.which(agent) is None:
         raise WtError(f"agent is not installed: {agent}")
 
-    workspace = workspaces.named(config, args[0])
+    workspace = workspaces.reuse_or_named(config, args[0])
 
     # The pool stays referenced for the rest of this process: it owns the open
     # descriptor that holds the slot across the exec below. Take it before

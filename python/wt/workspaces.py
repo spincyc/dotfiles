@@ -9,6 +9,7 @@ to a whole sweep before it acted — so the two disagreed about what was
 disposable and the sweep acted on facts that had since changed.
 """
 
+import re
 import shutil
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -30,6 +31,14 @@ TRACKED = "tracked"
 SKIPPED = "skipped"
 NESTED = "nested"
 FAILED = "failed"
+
+# New workspaces carry an unambiguous marker so stacked group directories do
+# not look like legacy two-component workspaces. Older workspaces are still
+# recognised by their established depth and guidance files.
+MARKER = ".wt-workspace"
+MARKER_CONTENT = "wt-workspace-v1\n"
+GROUP_MARKER = ".wt-group"
+GROUP_MARKER_CONTENT = "wt-group-v1\n"
 
 Step = tuple[str, str]
 OnStep = Callable[[str, str], None]
@@ -56,7 +65,7 @@ class Inventory:
 
 @dataclass(frozen=True)
 class Workspace:
-    """One ``<project>/<slug>`` directory below the workspace root."""
+    """One ``<project>/<slug>[/<child>...]`` workspace leaf."""
 
     name: str
     config: Config
@@ -91,6 +100,13 @@ class Workspace:
 
         Returns True when the directory itself was created.
         """
+        if (
+            (self.path / GROUP_MARKER).exists()
+            and not (self.path / MARKER).exists()
+        ):
+            raise WtError(
+                f"{self.name} is a stack group; name a workspace leaf below it"
+            )
         if not names.valid_branch(self.branch):
             # Asked once, here, about the string that actually becomes the
             # branch — the slug alone is not it, and a prefix git dislikes
@@ -98,10 +114,26 @@ class Workspace:
             # retyped name; discovered later it costs a directory full of
             # clones stuck on whatever branch they arrived on.
             raise WtError(f"not a usable branch name: {self.branch}")
-        _ensure_directory(self.config.root)
-        _ensure_directory(self.config.root / self.project)
         created = not self.path.exists()
-        _ensure_directory(self.path)
+        current = self.config.root
+        _ensure_directory(current)
+        components = Path(self.name).parts
+        for index, component in enumerate(components):
+            current /= component
+            _ensure_directory(current)
+            if 0 < index < len(components) - 1:
+                if (current / MARKER).exists() or any(
+                    (current / item).exists() for item in guidance.FILENAMES
+                ):
+                    parent = "/".join(components[: index + 1])
+                    raise WtError(
+                        f"cannot stack {self.name} under workspace {parent}; "
+                        "use an intermediate group"
+                    )
+                _write_control_file(
+                    current, GROUP_MARKER, GROUP_MARKER_CONTENT
+                )
+        _write_control_file(self.path, MARKER, MARKER_CONTENT)
         guidance.write(self.path, self.name, self.branch, force=force_guidance)
         return created
 
@@ -352,7 +384,7 @@ def inventory(workspace: Workspace) -> Inventory:
 
     for entry in entries:
         name = entry.name
-        if name in guidance.FILENAMES:
+        if name in guidance.FILENAMES or name in (MARKER, GROUP_MARKER):
             continue
         if name == scratch.NAME or entry.is_symlink():
             # A symlink holds nothing; removing it loses no work.
@@ -389,21 +421,77 @@ def _ensure_directory(path: Path) -> None:
     names.assert_owned_directory(path)
 
 
+def _write_control_file(directory: Path, name: str, expected: str) -> None:
+    """Write or validate a wt marker without following a link."""
+    marker = directory / name
+    if marker.is_symlink():
+        raise WtError(f"wt marker must not be a symlink: {marker}")
+    if marker.exists():
+        if not marker.is_file():
+            raise WtError(f"wt marker is not a file: {marker}")
+        try:
+            content = marker.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            raise WtError(
+                f"cannot read wt marker {marker}: {error}"
+            ) from error
+        if content != expected:
+            raise WtError(f"unrecognised wt marker: {marker}")
+        return
+    marker.write_text(expected, encoding="utf-8")
+
+
 def named(config: Config, value: str) -> Workspace:
     """Build a Workspace from a user-supplied name."""
     return Workspace(names.normalize_workspace(value, config.project), config)
 
 
 def listing(config: Config) -> list[Workspace]:
-    """Every existing workspace, in project then slug order."""
+    """Every existing workspace leaf, in full-name order.
+
+    Markers make arbitrary-depth leaves explicit. A two-component directory
+    without a marker remains a legacy workspace unless it is only the group
+    holding one or more marked descendants.
+    """
     root = config.root
     if not root.is_dir():
         return []
-    found: list[Workspace] = []
-    for project in _sorted_dirs(root, skip_dotted=True):
-        for slug in _sorted_dirs(project, skip_dotted=True):
-            found.append(Workspace(f"{project.name}/{slug.name}", config))
-    return found
+    marked: set[str] = set()
+    legacy: list[tuple[str, Path]] = []
+
+    def walk(directory: Path, parts: tuple[str, ...]) -> None:
+        for entry in _sorted_dirs(directory, skip_dotted=True):
+            relative = (*parts, entry.name)
+            name = "/".join(relative)
+            if len(relative) == 2:
+                legacy.append((name, entry))
+            if entry.is_symlink():
+                # Keep a legacy symlink visible so checks and destructive
+                # verbs can refuse it, but never walk through it.
+                continue
+            # Never enter a clone. Besides being expensive, a repository may
+            # legitimately contain a file with the same marker name.
+            if (entry / ".git").exists():
+                continue
+            marker = entry / MARKER
+            if marker.exists() or marker.is_symlink():
+                marked.add(name)
+            walk(entry, relative)
+
+    walk(root, ())
+    found = set(marked)
+    for name, directory in legacy:
+        if directory.is_symlink():
+            found.add(name)
+            continue
+        has_marked_child = any(item.startswith(f"{name}/") for item in marked)
+        has_guidance = any(
+            (directory / item).exists() for item in guidance.FILENAMES
+        )
+        is_group = (directory / GROUP_MARKER).exists()
+        if (not has_marked_child and not is_group) or has_guidance:
+            found.add(name)
+    return [Workspace(name, config) for name in sorted(found)]
 
 
 def _sorted_dirs(parent: Path, skip_dotted: bool = False) -> list[Path]:
@@ -417,35 +505,57 @@ def _sorted_dirs(parent: Path, skip_dotted: bool = False) -> list[Path]:
     return sorted(entries, key=lambda entry: entry.name)
 
 
-def prune_projects(
+def prune_groups(
     config: Config,
-    projects: Iterable[str],
+    workspace_names: Iterable[str],
     cwd: Path | None = None,
     dry_run: bool = False,
 ) -> list[str]:
-    """Remove the named project directories, if emptied. Returns those gone.
+    """Remove empty ancestors of workspace leaves that were just removed.
 
-    A project is only a grouping directory, so one holding no workspace
-    carries no information; `wt new` recreates it the moment it is named
-    again. Only the projects a caller has just emptied are considered: an
-    empty project directory someone else made is not this command's business.
+    Only ancestors of named leaves are considered. A stack group is removed
+    only when its sole remaining entry is wt's group marker; a project only
+    when truly empty. Unrelated empty directories remain outside this action.
     """
+    if dry_run:
+        # The workspace leaves still exist during a dry-run, so no ancestor
+        # is empty in the state being inspected.
+        return []
     here = (cwd or Path.cwd()).resolve()
+    candidates: set[str] = set()
+    for workspace_name in workspace_names:
+        parts = Path(workspace_name).parts
+        for length in range(len(parts) - 1, 0, -1):
+            candidates.add("/".join(parts[:length]))
+
     pruned: list[str] = []
-    for name in sorted(set(projects)):
-        project = config.root / name
-        if project.is_symlink() or not project.is_dir():
+    for name in sorted(
+        candidates, key=lambda item: (-len(Path(item).parts), item)
+    ):
+        group = config.root / name
+        if group.is_symlink() or not group.is_dir():
             continue
-        # Standing in a project directory is not standing in a workspace,
-        # so nothing else stops this one from vanishing underfoot.
-        if project.resolve() == here:
+        if group.resolve() == here:
             continue
         try:
-            if any(project.iterdir()):
+            entries = list(group.iterdir())
+            marker = group / GROUP_MARKER
+            if (
+                entries == [marker]
+                and marker.is_file()
+                and not marker.is_symlink()
+            ):
+                if (
+                    marker.read_text(encoding="utf-8")
+                    != GROUP_MARKER_CONTENT
+                ):
+                    continue
+                marker.unlink()
+                entries = []
+            if entries:
                 continue
-            if not dry_run:
-                project.rmdir()
-        except OSError:
+            group.rmdir()
+        except (OSError, UnicodeError):
             continue
         pruned.append(name)
     return pruned
@@ -459,8 +569,150 @@ def current(config: Config, cwd: Path | None = None) -> Workspace | None:
         # A shell left standing in a directory another `wt rm` removed is
         # not inside a workspace; it is nowhere.
         return None
-    name = names.workspace_from_path(here, config.root)
+    found = listing(config)
+    name = names.workspace_from_path(
+        here, config.root, (workspace.name for workspace in found)
+    )
     return Workspace(name, config) if name else None
+
+
+def _selector_key(value: str) -> tuple[str, ...]:
+    """Case- and separator-insensitive components for a selector."""
+    return tuple(
+        re.sub(r"[-_.]+", "", component).casefold()
+        for component in value.rstrip("/").split("/")
+    )
+
+
+def _component_abbreviates(typed: str, candidate: str) -> bool:
+    """True when one path component is a readable prefix abbreviation."""
+    typed_key = _selector_key(typed)[0]
+    candidate_key = _selector_key(candidate)[0]
+    if candidate_key.startswith(typed_key):
+        return True
+    typed_words = re.split(r"[-_.]+", typed.casefold())
+    candidate_words = re.split(r"[-_.]+", candidate.casefold())
+    return len(typed_words) == len(candidate_words) and all(
+        candidate_word.startswith(typed_word)
+        for typed_word, candidate_word in zip(
+            typed_words, candidate_words, strict=True
+        )
+    )
+
+
+def _aliases(workspace: Workspace) -> tuple[str, ...]:
+    """The full name, branch, slug stack, and leaf accepted for a workspace."""
+    return (
+        workspace.name,
+        workspace.branch,
+        workspace.slug,
+        workspace.slug.rpartition("/")[2],
+    )
+
+
+def _matches(
+    config: Config, value: str, abbreviate: bool = True
+) -> list[Workspace]:
+    """Existing workspaces selected by an exact alias or component prefix."""
+    found = listing(config)
+    wanted = value.rstrip("/")
+    if not wanted:
+        return []
+
+    # A literal full workspace name always wins over aliases. This keeps a
+    # project actually named like the configured branch prefix addressable.
+    literal = [workspace for workspace in found if workspace.name == wanted]
+    if literal:
+        return literal
+
+    wanted_key = _selector_key(wanted)
+    full_key = [
+        workspace
+        for workspace in found
+        if _selector_key(workspace.name) == wanted_key
+    ]
+    if full_key:
+        return full_key
+
+    exact = {
+        workspace.name: workspace
+        for workspace in found
+        if wanted in _aliases(workspace)
+    }
+    if exact:
+        return sorted(exact.values(), key=lambda workspace: workspace.name)
+
+    canonical = {
+        workspace.name: workspace
+        for workspace in found
+        if any(
+            _selector_key(alias) == wanted_key for alias in _aliases(workspace)
+        )
+    }
+    if canonical or not abbreviate:
+        return sorted(canonical.values(), key=lambda workspace: workspace.name)
+
+    wanted_parts = wanted.split("/")
+    abbreviated = {
+        workspace.name: workspace
+        for workspace in found
+        if any(
+            len(alias_parts := alias.split("/")) == len(wanted_parts)
+            and all(
+                _component_abbreviates(typed, candidate)
+                for typed, candidate in zip(
+                    wanted_parts, alias_parts, strict=True
+                )
+            )
+            for alias in _aliases(workspace)
+        )
+    }
+    return sorted(abbreviated.values(), key=lambda workspace: workspace.name)
+
+
+def select(
+    config: Config, value: str, abbreviate: bool = True
+) -> Workspace:
+    """Resolve one existing workspace from a forgiving, unambiguous selector."""
+    matched = _matches(config, value, abbreviate=abbreviate)
+    if not matched:
+        try:
+            candidate = named(config, value)
+        except WtError:
+            candidate = None
+        # Preserve the more useful path-safety refusal for a named symlink.
+        if candidate is not None and candidate.path.is_symlink():
+            return candidate
+        # A valid exact name that is simply absent keeps the established
+        # "no such workspace" error (including its resolved path).
+        if candidate is not None and not candidate.path.exists():
+            candidate.require()
+        raise WtError(f"no workspace matches: {value}")
+    if len(matched) > 1:
+        choices = " ".join(workspace.name for workspace in matched)
+        raise WtError(f"ambiguous workspace {value}: {choices}")
+    return matched[0]
+
+
+def reuse_or_named(
+    config: Config, value: str, abbreviate: bool = True
+) -> Workspace:
+    """Reuse a selected workspace, or build the exact name for creation."""
+    matched = _matches(config, value, abbreviate=abbreviate)
+    if len(matched) > 1:
+        choices = " ".join(workspace.name for workspace in matched)
+        raise WtError(f"ambiguous workspace {value}: {choices}")
+    if matched:
+        return matched[0]
+    candidate = named(config, value)
+    if (
+        (candidate.path / GROUP_MARKER).exists()
+        and not (candidate.path / MARKER).exists()
+    ):
+        raise WtError(
+            f"{candidate.name} is a stack group; name a workspace leaf below it"
+        )
+    return candidate
 
 
 def resolve(
@@ -473,10 +725,11 @@ def resolve(
     workspace is used and every argument belongs to the verb.
     """
     if args and args[0] != "--" and not args[0].startswith("-"):
-        try:
-            candidate = named(config, args[0])
-        except WtError:
-            candidate = None
+        matched = _matches(config, args[0])
+        candidate = matched[0] if len(matched) == 1 else None
+        if len(matched) > 1:
+            choices = " ".join(workspace.name for workspace in matched)
+            raise WtError(f"ambiguous workspace {args[0]}: {choices}")
         if candidate is not None and candidate.exists():
             return candidate, args[1:]
 
@@ -493,19 +746,3 @@ def resolve(
             f"{config.root}"
         )
     return named(config, args[0]), args[1:]
-
-
-def workspace_reference(config: Config, value: str) -> bool:
-    """True when value is shaped like a workspace name rather than a verb arg.
-
-    `wt clone` and `wt git` take free-form arguments that can look exactly
-    like a workspace, so naming one that does not exist used to fall through
-    silently and act on the current workspace instead.
-    """
-    if "/" not in value or value.startswith("-"):
-        return False
-    try:
-        names.normalize_workspace(value, config.project)
-    except WtError:
-        return False
-    return True

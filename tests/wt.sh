@@ -297,11 +297,52 @@ if escape_out=$(wt_run new ../escape 2>&1); then
   fail "traversal name was accepted"
 fi
 assert_contains "$escape_out" 'not a usable workspace name: ../escape'
-if deep_out=$(wt_run new a/b/c 2>&1); then
-  fail "two-slash name was accepted"
-fi
-assert_contains "$deep_out" 'not a usable workspace name: a/b/c'
 [ ! -e "$work/../escape" ] || fail "traversal created a directory"
+
+printf '# workspace names stack and accept unambiguous selectors\n'
+wt_root="$test_root/stacks"
+stacked=$(wt_run new telos/high-level-vision/replay-one 2>/dev/null)
+[ "$stacked" = "$test_root/stacks/telos/high-level-vision/replay-one" ] ||
+  fail "unexpected stacked workspace path: $stacked"
+[ ! -e "$test_root/stacks/telos/high-level-vision/AGENTS.md" ] ||
+  fail "a stack group was turned into a workspace"
+[ -f "$test_root/stacks/telos/high-level-vision/.wt-group" ] ||
+  fail "a stack group was not marked"
+if group_launch=$(wt_run telos/high-level-vision 2>&1); then
+  fail "a stack group was launched as a workspace"
+fi
+assert_contains "$group_launch" 'is a stack group; name a workspace leaf'
+[ "$(wt_run branch tel/high/rep-o)" = \
+    "feature/high-level-vision/replay-one" ] ||
+  fail "an abbreviated stacked selector found the wrong branch"
+[ "$(wt_run path feature/high-level-vision/replay-one)" = "$stacked" ] ||
+  fail "a branch name did not select its workspace"
+[ "$(wt_run path HIGH_LEVEL_VISION/REPLAY_ONE)" = "$stacked" ] ||
+  fail "a separator-insensitive slug stack did not select its workspace"
+launch_stack=$(wt_run tel/high/rep-o 2>/dev/null)
+assert_contains "$launch_stack" 'workspace=telos/high-level-vision/replay-one'
+[ ! -e "$test_root/stacks/tel/high/rep-o" ] ||
+  fail "launch created an abbreviation instead of reusing its workspace"
+wt_run new telos/high-level-vision/replay-two >/dev/null 2>&1
+[ "$(wt_run path replay-t)" = \
+    "$test_root/stacks/telos/high-level-vision/replay-two" ] ||
+  fail "a second replay did not stack under the same vision"
+[ "$(wt_run ls -q)" = "telos/high-level-vision/replay-one
+telos/high-level-vision/replay-two" ] ||
+  fail "a stack group was listed as a workspace"
+wt_run new other/high-level-vision/replay-one >/dev/null 2>&1
+if ambiguous=$(wt_run path replay-o 2>&1); then
+  fail "an ambiguous leaf selector was accepted"
+fi
+assert_contains "$ambiguous" 'ambiguous workspace replay-o'
+assert_contains "$ambiguous" 'other/high-level-vision/replay-one'
+assert_contains "$ambiguous" 'telos/high-level-vision/replay-one'
+stack_sweep=$(wt_run sweep)
+assert_contains "$stack_sweep" \
+  'pruned   telos/high-level-vision  empty group'
+[ ! -e "$test_root/stacks/telos" ] ||
+  fail "sweep left the emptied replay stack behind"
+wt_root="$work"
 
 printf '# names that are not usable as branches are refused\n'
 if lock_out=$(wt_run new telos/demo.lock 2>&1); then
@@ -457,6 +498,14 @@ printf '# check passes on a healthy layout\n'
 check_out=$(wt_run check) || fail "check failed on a healthy layout: $check_out"
 assert_contains "$check_out" 'wt check passed.'
 assert_contains "$check_out" '0 agents running'
+
+printf '# check fails on an invalid workspace marker\n'
+printf 'not a wt marker\n' >"$work/telos/demo/.wt-workspace"
+if marker_out=$(wt_run check 2>&1); then
+  fail "check accepted an invalid workspace marker"
+fi
+assert_contains "$marker_out" 'telos/demo has an invalid .wt-workspace'
+printf 'wt-workspace-v1\n' >"$work/telos/demo/.wt-workspace"
 
 printf '# check warns about a repository off the workspace branch\n'
 git -C "$work/telos/demo/spincyc/beta" checkout --quiet main

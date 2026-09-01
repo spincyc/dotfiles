@@ -575,7 +575,6 @@ class WorkspaceNameTest(TemporaryHome):
 
     def test_refuses_what_git_or_the_filesystem_would_not_take(self) -> None:
         for value in (
-            "a/b/c",
             "telos/demo.lock",
             "telos/.hidden",
             "telos/demo.",
@@ -588,6 +587,16 @@ class WorkspaceNameTest(TemporaryHome):
                 with self.assertRaises(WtError):
                     names.normalize_workspace(value, "telos")
 
+    def test_a_slug_stack_keeps_every_component_after_the_project(self) -> None:
+        name = names.normalize_workspace(
+            "telos/high-level-vision/replay-one", None
+        )
+        self.assertEqual(name, "telos/high-level-vision/replay-one")
+        self.assertEqual(
+            names.split_workspace(name),
+            ("telos", "high-level-vision/replay-one"),
+        )
+
     def test_workspace_from_path(self) -> None:
         root = self.root / "worktrees"
         deep = root / "telos" / "demo" / "spincyc" / "telos"
@@ -595,8 +604,104 @@ class WorkspaceNameTest(TemporaryHome):
         self.assertEqual(
             names.workspace_from_path(deep, root), "telos/demo"
         )
+        self.assertEqual(
+            names.workspace_from_path(
+                deep,
+                root,
+                ("telos/demo", "telos/demo/spincyc/telos"),
+            ),
+            "telos/demo/spincyc/telos",
+        )
         self.assertIsNone(names.workspace_from_path(root / "telos", root))
         self.assertIsNone(names.workspace_from_path(self.root, root))
+
+
+class WorkspaceSelectionTest(TemporaryHome):
+    """Stack leaves and their human-sized, unambiguous selectors."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.config = Config(root=self.root / "worktrees")
+
+    def make(self, name: str) -> workspaces.Workspace:
+        workspace = workspaces.named(self.config, name)
+        workspace.create()
+        return workspace
+
+    def test_a_marked_leaf_does_not_turn_its_groups_into_workspaces(self) -> None:
+        workspace = self.make("telos/high-level-vision/replay-one")
+        deep = workspace.path / "owner" / "repo"
+        deep.mkdir(parents=True)
+        self.assertEqual(
+            workspace.branch, "feature/high-level-vision/replay-one"
+        )
+        self.assertEqual(
+            [item.name for item in workspaces.listing(self.config)],
+            ["telos/high-level-vision/replay-one"],
+        )
+        self.assertEqual(
+            workspaces.current(self.config, deep),
+            workspace,
+        )
+        self.assertEqual(
+            (workspace.path / workspaces.MARKER).read_text(encoding="utf-8"),
+            workspaces.MARKER_CONTENT,
+        )
+        self.assertEqual(
+            (workspace.path.parent / workspaces.GROUP_MARKER).read_text(
+                encoding="utf-8"
+            ),
+            workspaces.GROUP_MARKER_CONTENT,
+        )
+
+    def test_branch_slug_leaf_and_component_prefixes_select_one_leaf(
+        self,
+    ) -> None:
+        workspace = self.make("telos/high-level-vision/replay-one")
+        for selector in (
+            "feature/high-level-vision/replay-one",
+            "high-level-vision/replay-one",
+            "replay-one",
+            "tel/high/rep-o",
+            "HIGH_LEVEL_VISION/REPLAY_ONE",
+        ):
+            with self.subTest(selector=selector):
+                self.assertEqual(
+                    workspaces.select(self.config, selector), workspace
+                )
+
+    def test_an_ambiguous_short_selector_names_every_choice(self) -> None:
+        self.make("telos/vision/replay-one")
+        self.make("other/vision/replay-one")
+        with self.assertRaises(WtError) as raised:
+            workspaces.select(self.config, "replay-o")
+        self.assertIn("ambiguous workspace replay-o", raised.exception.message)
+        self.assertIn("other/vision/replay-one", raised.exception.message)
+        self.assertIn("telos/vision/replay-one", raised.exception.message)
+
+    def test_general_similarity_does_not_capture_a_new_lane_name(self) -> None:
+        config = Config(root=self.root / "lanes", project="work")
+        workspaces.named(config, "meridian-lane-2").create()
+        selected = workspaces.reuse_or_named(config, "meridian-lane-3")
+        self.assertEqual(selected.name, "work/meridian-lane-3")
+        self.assertFalse(selected.exists())
+
+    def test_a_group_is_not_a_workspace_and_a_workspace_is_not_a_group(
+        self,
+    ) -> None:
+        self.make("telos/vision/replay-one")
+        with self.assertRaises(WtError) as group:
+            workspaces.reuse_or_named(self.config, "telos/vision")
+        self.assertIn("is a stack group", group.exception.message)
+
+        parent = self.make("other/vision")
+        with self.assertRaises(WtError) as nested:
+            workspaces.named(self.config, "other/vision/replay-one").create()
+        self.assertIn(
+            "cannot stack other/vision/replay-one under workspace other/vision",
+            nested.exception.message,
+        )
+        self.assertTrue(parent.exists())
 
 
 class GuidanceWriteTest(unittest.TestCase):
@@ -618,6 +723,10 @@ class GuidanceWriteTest(unittest.TestCase):
             self.assertTrue((self.directory / name).is_file(), name)
         self.assertIn(
             "Commit to `feature/demo`",
+            (self.directory / guidance.CANONICAL).read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            "Keep replay stacks in separate leaves",
             (self.directory / guidance.CANONICAL).read_text(encoding="utf-8"),
         )
         # Nothing is missing, so nothing is written.

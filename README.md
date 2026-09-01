@@ -219,12 +219,12 @@ unmanaged, or drifted files.
 ## Agent workspaces: `wt`
 
 `wt` runs an AI agent in a throwaway workspace under `~/git/worktrees`. A
-workspace is named `<project>/<slug>` — the project the work belongs to and
-the slug of one line of work — and is a plain directory holding several
-independent clones, each parked at `<owner>/<repo>`. It is not a repository,
-and it is not a `git worktree` of a canonical clone under `~/git`; the clones
-inside it are independent, so work done there never reaches the canonical
-checkouts.
+workspace leaf is named `<project>/<slug>[/<child>...]` — the project the
+work belongs to followed by the complete slug stack for one line of work —
+and is a plain directory holding several independent clones, each parked at
+`<owner>/<repo>`. It is not a repository, and it is not a `git worktree` of a
+canonical clone under `~/git`; the clones inside it are independent, so work
+done there never reaches the canonical checkouts.
 
 ```sh
 wt claude telos/agent-sync      # create or reuse the workspace, run claude in it
@@ -236,16 +236,40 @@ wt agent-sync                   # a bare slug takes $WT_PROJECT
 The project only groups workspaces and names nothing on a forge; the
 repositories a workspace holds are still cloned explicitly.
 
-Every clone in a workspace works on one branch, `feature/<slug>`. `wt clone`
-creates it and, until it is published, points it at the branch the clone
-arrived on, so `wt status` and `wt sync` stay meaningful, `wt rm` can still
-tell saved work from unsaved, and a bare `git push` refuses instead of
-sending the work to the default branch. That refusal is why the managed
-`.gitconfig` pins `push.default = simple` rather than trusting the Git
-default. Publishing is therefore explicit: `wt push`, or
-`git push -u origin "$WT_BRANCH"` inside one clone. `wt check` warns about a
-repository that has left the branch, and `WT_BRANCH_PREFIX` renames the
-`feature` half.
+Slug components can also group a replay stack. Treat the intermediate path as
+a group and put each replay in its own leaf:
+
+```sh
+wt codex telos/agent-sync/replay-1
+wt codex telos/agent-sync/replay-2
+# branches: feature/agent-sync/replay-1 and feature/agent-sync/replay-2
+```
+
+This keeps every replay's directory, agent slot, and branch isolated. The
+intermediate `telos/agent-sync` need not be a workspace itself. That matters
+to Git: a branch named `feature/agent-sync` cannot coexist with a branch below
+it such as `feature/agent-sync/replay-1`, while the sibling replay branches
+above can coexist. `wt` therefore refuses to launch an intermediate group as
+a workspace, and refuses to put a child below a path that is already a
+workspace. Put any base pass in its own leaf, such as
+`telos/agent-sync/baseline`.
+
+`wt` records leaf and intermediate directories with small `.wt-workspace` and
+`.wt-group` marker files. They let listing and current-directory detection
+distinguish a stack group from a workspace without scanning into the clones.
+Existing two-component workspaces need no migration; the next `wt new` or
+launch that reuses one adds its leaf marker.
+
+Every clone in a workspace works on one branch,
+`feature/<slug>[/<child>...]`. `wt clone` creates it and, until it is
+published, points it at the branch the clone arrived on, so `wt status` and
+`wt sync` stay meaningful, `wt rm` can still tell saved work from unsaved,
+and a bare `git push` refuses instead of sending the work to the default
+branch. That refusal is why the managed `.gitconfig` pins
+`push.default = simple` rather than trusting the Git default. Publishing is
+therefore explicit: `wt push`, or `git push -u origin "$WT_BRANCH"` inside
+one clone. `wt check` warns about a repository that has left the branch, and
+`WT_BRANCH_PREFIX` renames the `feature` half.
 
 `wt push` publishes only where there is something to publish: it skips a
 clone that has left the workspace branch, and one whose commits a remote
@@ -314,6 +338,16 @@ wt sweep --dry-run                      # the workspaces a sweep would remove
 wt tidy --dry-run telos/agent-sync      # what tidy would delete, ignored files too
 ```
 
+An existing workspace does not require an exact full-name spelling. `wt`
+accepts its full branch (`feature/agent-sync/replay-1`), its slug stack without
+the project (`agent-sync/replay-1`), a unique final slug (`replay-1`), or an
+unambiguous component prefix (`tel/ag/repl-1`). Matching ignores case and the
+differences among `-`, `_`, and `.`. Exact full workspace names win first; a
+short selector that matches more than one leaf is refused and prints every
+candidate. Commands that can create a workspace still create a selector that
+matches nothing, so use `wt new` when a deliberately new name is a prefix of
+an existing one.
+
 `wt sync` fetches and rebases each clone onto its default branch. `wt pull`
 is deliberately *not* an alias for it: `git pull --ff-only` never rewrote
 anything, `sync` rebases, and pointing fifteen years of muscle memory at a
@@ -344,9 +378,7 @@ the workspace guidance that tells agents to invoke `wt` directly.
 Zsh completion lives in `zsh/_wt`, which `.zshrc` puts on `fpath` from this
 checkout, so it needs no reinstall and has no `managed_links` entry:
 completions are Zsh-only, unlike the `bin/` tools. It completes the verbs
-and, more usefully, existing workspace names taken live from `wt ls -q` — a
-mistyped slug is otherwise a new workspace, and a launch will create it and
-start an agent in it without complaint.
+and, more usefully, canonical workspace names taken live from `wt ls -q`.
 
 `--force` (`-f`) and `--dry-run` (`-n`) are read from wherever in the
 arguments they were typed, so `wt rm telos/demo -f` works as readily as
@@ -417,7 +449,7 @@ into nothing else — a shell you opened yourself has none of them:
 
 | Variable | Value |
 | --- | --- |
-| `WT_WORKSPACE` | The workspace name, `<project>/<slug>` |
+| `WT_WORKSPACE` | The complete workspace leaf name |
 | `WT_WORKSPACE_DIR` | Its absolute path, the directory the agent starts in |
 | `WT_BRANCH` | The workspace branch, for `git push -u origin "$WT_BRANCH"` |
 | `WT_AGENT_SLOT` | Which agent slot this session holds |

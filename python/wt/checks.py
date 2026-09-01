@@ -175,6 +175,29 @@ def _workspace(workspace: workspaces.Workspace) -> list[CheckResult]:
     directory = workspace.path
     results: list[CheckResult] = []
 
+    for marker_name, expected in (
+        (workspaces.MARKER, workspaces.MARKER_CONTENT),
+        (workspaces.GROUP_MARKER, workspaces.GROUP_MARKER_CONTENT),
+    ):
+        marker = directory / marker_name
+        if not marker.exists() and not marker.is_symlink():
+            continue
+        try:
+            valid = (
+                marker.is_file()
+                and not marker.is_symlink()
+                and marker.read_text(encoding="utf-8") == expected
+            )
+        except (OSError, UnicodeError):
+            valid = False
+        if not valid:
+            results.append(
+                CheckResult(
+                    Level.FAIL,
+                    f"{workspace.name} has an invalid {marker_name}",
+                )
+            )
+
     if (directory / ".git").exists():
         results.append(
             CheckResult(Level.FAIL, f"{workspace.name} is itself a repository")

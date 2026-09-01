@@ -24,8 +24,30 @@ def render(workspace: str, branch: str) -> str:
 
 This directory is a `wt` agent workspace, not a repository. It holds the
 clones one line of work needs, side by side. Its name is
-`<project>/<slug>`: the project it belongs to, and the slug of this one line
-of work.
+`<project>/<slug>[/<child>...]`: the project it belongs to, followed by the
+complete slug stack for this one line of work.
+
+## Keep replay stacks in separate leaves
+
+Intermediate components group related work; only the final component is a
+workspace leaf. For several replays of one high-level vision, use sibling
+leaves such as `<project>/<vision>/replay-1` and
+`<project>/<vision>/replay-2`. Each leaf has its own directory, agent slot,
+and branch, so one replay cannot silently inherit another replay's files or
+commits. Do not put work directly in the intermediate `<project>/<vision>`
+group.
+
+`wt` refuses to launch an intermediate group as a workspace, and it refuses
+to add children below a path that is already a workspace: Git cannot keep a
+branch and branches nested below that same branch ref. If the high-level
+vision needs a baseline pass of its own, make `baseline` another leaf beside
+the replay leaves.
+
+Existing leaves can be selected in `wt` commands by their full workspace
+name, full branch, slug stack without the project, unique final slug, or an
+unambiguous prefix of each component. Ambiguous selectors are refused and
+list their candidates. Prefer `$WT_WORKSPACE` and `$WT_BRANCH` in scripts;
+they always carry the canonical values for this leaf.
 
 ## Commit to `{branch}`, in every repository
 
