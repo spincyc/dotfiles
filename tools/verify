@@ -284,12 +284,16 @@ def check_tool_registry() -> None:
 
 
 def check_python_modules() -> None:
+    run([sys.executable, "-m", "compileall", "-q", "python"])
+    # compileall silently skips a path that does not end in .py, which every
+    # bin/ entry point does not, so those go through py_compile instead.
     run(
-        [sys.executable, "-m", "compileall", "-q", "python", "bin/wt",
-         "bin/relay"]
+        [sys.executable, "-m", "py_compile", "bin/wt", "bin/relay",
+         "bin/agent-statusline"]
     )
-    for cache in (REPO_ROOT / "python").rglob("__pycache__"):
-        shutil.rmtree(cache, ignore_errors=True)
+    for root in ("python", "bin"):
+        for cache in (REPO_ROOT / root).rglob("__pycache__"):
+            shutil.rmtree(cache, ignore_errors=True)
 
 
 def check_wt() -> None:

@@ -4,5 +4,9 @@
   },
   "model": "claude-fable-5[1m]",
   "theme": "dark",
-  "skipWorkflowUsageWarning": true
+  "skipWorkflowUsageWarning": true,
+  "statusLine": {
+    "type": "command",
+    "command": "$HOME/.local/bin/agent-statusline"
+  }
 }

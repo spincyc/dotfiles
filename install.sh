@@ -176,6 +176,7 @@ bin/wt:.local/bin/wt
 python/wt:.local/lib/python/wt
 bin/relay:.local/bin/relay
 python/relay:.local/lib/python/relay
+bin/agent-statusline:.local/bin/agent-statusline
 AI_GUIDANCE.md:.codex/AGENTS.md
 ai-guidance:.codex/ai-guidance
 AI_GUIDANCE.md:.claude/CLAUDE.md

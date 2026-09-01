@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""Render one status line for the agent CLIs that accept a status line command.
+
+Claude Code and Droid both spawn a configured command and pipe a JSON snapshot
+of the session on stdin; their payloads differ in shape but carry the same
+facts. This command normalizes both and prints a single line holding, in order:
+
+    <pwd> · <branch>* · <model> <reasoning level> · Context <n>% left
+
+Codex renders its own status line from a fixed item set rather than a command,
+so `[tui].status_line` in ~/.codex/config.toml selects the same fields in the
+same order instead of calling this script. The separator, the field order and
+the "Context n% left" wording above are Codex's, copied here so the three
+status lines read the same; the "*" dirty marker is the one addition.
+
+Fields the host does not report are dropped rather than faked, so a host that
+reports no reasoning level simply shows one field fewer.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+
+CYAN = "\033[36m"
+YELLOW = "\033[33m"
+RED = "\033[31m"
+MAGENTA = "\033[35m"
+BLUE = "\033[34m"
+DIM = "\033[2m"
+RESET = "\033[0m"
+
+SEPARATOR = " \u00b7 "
+
+# Droid kills a status line command that overruns its own budget, so the git
+# call gets a ceiling well under it and a miss degrades to no branch field.
+GIT_TIMEOUT_SECONDS = 2.0
+
+
+def paint(text: str, color: str) -> str:
+    """Wrap text in an ANSI color unless the environment opted out."""
+    if os.environ.get("NO_COLOR"):
+        return text
+    return f"{color}{text}{RESET}"
+
+
+def read_payload() -> dict:
+    """Parse the host's JSON snapshot, tolerating an absent or broken one."""
+    try:
+        payload = json.load(sys.stdin)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def section(payload: dict, key: str) -> dict:
+    """Return a nested object, or an empty one when it is missing."""
+    value = payload.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def find_cwd(payload: dict) -> str:
+    """Claude Code sends both cwd and workspace.current_dir; Droid the same."""
+    for candidate in (payload.get("cwd"), section(payload, "workspace").get("current_dir")):
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    return os.getcwd()
+
+
+def abbreviate_home(path: str) -> str:
+    """Abbreviate $HOME as ~, the way the zsh prompt's %~ does."""
+    home = os.path.expanduser("~")
+    if path == home:
+        return "~"
+    if path.startswith(home + os.sep):
+        return "~" + path[len(home):]
+    return path
+
+
+def git_segment(cwd: str) -> str:
+    """Render the branch, plus * when dirty, or nothing outside a repository.
+
+    The --branch header names the branch and any further line means the tree is
+    dirty, so both facts come from a single invocation.
+    """
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "--no-optional-locks",
+                "-C",
+                cwd,
+                "status",
+                "--porcelain",
+                "--branch",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if completed.returncode != 0:
+        return ""
+
+    lines = completed.stdout.splitlines()
+    if not lines:
+        return ""
+    branch = lines[0].removeprefix("## ").split("...", 1)[0]
+    if not branch or branch == "HEAD (no branch)" or branch.startswith("No commits yet on "):
+        return ""
+
+    dirty = paint("*", RED) if len(lines) > 1 else ""
+    return paint(branch, YELLOW) + dirty
+
+
+def find_model(payload: dict) -> str:
+    """Both hosts name the model under model.display_name."""
+    name = section(payload, "model").get("display_name")
+    return name if isinstance(name, str) else ""
+
+
+def find_reasoning(payload: dict) -> str:
+    """Claude Code reports effort.level; Droid reports model.reasoning_effort.
+
+    Claude Code omits effort entirely for models that have no effort setting,
+    which is why an absent level drops the field instead of guessing one.
+    """
+    for candidate in (
+        section(payload, "effort").get("level"),
+        section(payload, "model").get("reasoning_effort"),
+    ):
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    return ""
+
+
+def find_context_left(payload: dict) -> str:
+    """Report context as the percentage still free, matching Codex's wording.
+
+    Claude Code reports the remaining share directly; Droid reports the used
+    share, so its value is inverted here rather than shown with the opposite
+    meaning under the same label.
+    """
+    remaining = section(payload, "context_window").get("remaining_percentage")
+    if not isinstance(remaining, (int, float)):
+        used = section(payload, "context").get("percentage")
+        if not isinstance(used, (int, float)):
+            return ""
+        remaining = 100 - used
+    return f"Context {max(0, min(100, round(remaining)))}% left"
+
+
+def main() -> int:
+    payload = read_payload()
+    cwd = find_cwd(payload)
+
+    model = find_model(payload)
+    reasoning = find_reasoning(payload)
+    context_left = find_context_left(payload)
+
+    # Codex prints the model and its reasoning level as one item, so they share
+    # a field here too rather than being separated like the rest.
+    model_field = " ".join(
+        part
+        for part in (
+            paint(model, MAGENTA) if model else "",
+            paint(reasoning, BLUE) if reasoning else "",
+        )
+        if part
+    )
+
+    fields = [
+        paint(abbreviate_home(cwd), CYAN),
+        git_segment(cwd),
+        model_field,
+        paint(context_left, YELLOW) if context_left else "",
+    ]
+
+    separator = paint(SEPARATOR, DIM)
+    sys.stdout.write(separator.join(field for field in fields if field))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

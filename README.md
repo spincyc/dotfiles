@@ -534,6 +534,50 @@ blocked, and `5` lint findings. A blocked run prints a `blocked: <token>`
 line naming which precondition stopped it, so the caller can act on the token
 instead of parsing the message.
 
+## Agent status lines: `agent-statusline`
+
+The terminal agents installed here show the same facts in the same order, so
+switching between them costs no re-reading:
+
+```
+~/git/dotfiles · main* · gpt-5.6-sol xhigh · Context 100% left
+```
+
+The fields are the working directory, the Git branch with `*` when the tree is
+dirty, the model with its reasoning level, and how much of the context window
+is still free.
+
+Codex builds that line itself from a fixed item set, selected in
+`~/.codex/config.toml` (`/statusline` writes the same key):
+
+```toml
+[tui]
+status_line = ["current-dir", "git-branch", "model-with-reasoning", "context-remaining"]
+```
+
+Claude Code and Droid instead spawn a command and pipe a JSON snapshot of the
+session to it. `bin/agent-statusline` reads either payload — the two differ in
+shape, and Droid reports the context share used where Claude Code reports the
+share left — and prints the line above, copying Codex's separator and wording.
+The installer links it to `~/.local/bin/agent-statusline`, which both hosts
+reference through `$HOME` so the setting stays portable:
+
+```json
+"statusLine": { "type": "command", "command": "$HOME/.local/bin/agent-statusline" }
+```
+
+That block lives in `claude/settings.json` for Claude Code, so a fresh machine
+is seeded with it, and in `~/.factory/settings.json` for Droid. `droid
+statusline-probe` runs the configured command under Droid's own execution
+budget and reports what it rendered, which is the cheapest check after an edit.
+
+A field the host does not report is dropped rather than faked: Claude Code
+sends no reasoning level for models that have none, and no branch shows
+outside a repository. Set `NO_COLOR` to get the same line unstyled.
+
+OpenCode is not wired up. It renders its status bar internally and exposes no
+command or item selection to configure, so there is nothing to align.
+
 ## Local configuration
 
 Put machine-specific settings and secrets in `~/.zshrc.local`. That file is
