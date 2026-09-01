@@ -447,7 +447,7 @@ assert_file_contains \
   'hl.bind'
 assert_file_contains \
   "$lua_ml4w_root/.config/hypr/conf/monitors/ultrawide-desktop.lua" \
-  '5120x1440@239.76'
+  '5120x1440@59.98'
 
 run_lua_profile --check >"$test_root/lua-check.out" 2>&1 ||
   fail "ML4W 2.15 profile check failed"

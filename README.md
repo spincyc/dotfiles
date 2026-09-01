@@ -168,11 +168,13 @@ in the named host layer. A common `pipewire.conf.d` drop-in adds 44100 Hz to
 instead of being resampled to the 48 kHz default.
 That host layer specifically selects built-in `eDP-1`, the ultrawide by
 description (`desc:Samsung Electric Company Odyssey G95C`) at
-`5120x1440@239.76Hz`, and the `tpacpi::kbd_backlight` device. The ultrawide is
-matched on its description rather than its DisplayPort connector name because
-the connector re-enumerates across sessions, and the panel is pinned at
-`5120x0` so it always sits to the right of the ultrawide at `0x0`. Review it
-before using the profile on different hardware.
+`5120x1440@59.98Hz`, and the `tpacpi::kbd_backlight` device. The panel's
+native `239.76Hz` mode is avoided because its DSC/high-bandwidth DisplayPort
+path causes brief audio dropouts with the Arrow Lake i915 driver. The
+ultrawide is matched on its description rather than its DisplayPort connector
+name because the connector re-enumerates across sessions, and the panel is
+pinned at `5120x0` so it always sits to the right of the ultrawide at `0x0`.
+Review it before using the profile on different hardware.
 
 It also handles clamshell operation. With the lid shut, Hyprland stops driving
 the built-in panel but leaves `eDP-1` enabled at a `0x0` mode positioned at

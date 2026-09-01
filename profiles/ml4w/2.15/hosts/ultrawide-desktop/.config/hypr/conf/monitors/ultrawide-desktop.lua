@@ -17,6 +17,12 @@ local ULTRAWIDE = "desc:Samsung Electric Company Odyssey G95C"
 local ULTRAWIDE_POSITION = "0x0"
 local BUILT_IN_POSITION = "5120x0"
 
+-- The panel also advertises 5120x1440@239.76, but that DSC/high-bandwidth
+-- mode causes brief DisplayPort audio dropouts on the Arrow Lake i915 path.
+-- 2026-09-01: a generated 48 kHz tone and Firefox both dropped out at 239.76
+-- while remaining continuous at 59.98; PipeWire reported no graph errors.
+local ULTRAWIDE_MODE = "5120x1440@59.98"
+
 hl.monitor({
     output = "",
     mode = "preferred",
@@ -26,7 +32,7 @@ hl.monitor({
 
 hl.monitor({
     output = ULTRAWIDE,
-    mode = "5120x1440@239.76",
+    mode = ULTRAWIDE_MODE,
     position = ULTRAWIDE_POSITION,
     scale = 1,
 })
