@@ -232,6 +232,15 @@ inert as a comment rather than a half-executed command.
 # relay relay-v4 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v4/relay/PROTOCOL.md, initialize the clean checkout on feat/relay as it permits, run preflight, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, claim the turn, and execute that brief
 ```
 
+Presentation requirement:
+
+- The handoff itself is exactly one physical line beginning with `#`.
+- In user-visible chat, render that line inside a fenced code block so
+  Markdown does not interpret `#` as a heading.
+- The fenced code block contains only the handoff line: no prompt marker, no
+  wrapping text, no second line, and no shell-language annotation.
+- Explanatory prose, if any, must appear outside the fenced block.
+
 - Substitute a real sha. Never emit a literal `<sha>` placeholder.
 - Keep it ASCII. Dashes and quotes that survive one clipboard may not survive
   the next.
