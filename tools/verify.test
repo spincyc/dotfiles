@@ -40,7 +40,7 @@ fi
 
 # And on a structurally complete document missing required execution settings.
 {
-  printf 'Version `relay-v3`.\n'
+  printf 'Version `relay-v4`.\n'
   printf '## %s\n' Roles Authorization Preconditions "Channel layout" \
     "Turn file format" "Seed briefs" "Handoff line" "Context boundary" \
     "Turn allocation and the single-writer rule" "Planner rules" \
@@ -53,7 +53,7 @@ then
 fi
 
 # A declared version must match the front matter, URL, and handoff example.
-sed 's/^protocol: relay-v3$/protocol: relay-v2/' \
+sed 's/^protocol: relay-v4$/protocol: relay-v3/' \
   "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/relay/PROTOCOL.md" \
   >"$stand_in"
 if RELAY_PROTOCOL_PATH="$stand_in" "$tool" --only relay_protocol >/dev/null 2>&1

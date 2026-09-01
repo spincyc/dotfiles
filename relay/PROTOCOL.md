@@ -1,6 +1,6 @@
 # Agent relay protocol
 
-Version `relay-v3`.
+Version `relay-v4`.
 
 A planning agent with git write access and no useful shell in the user's
 checkout hands work to an executing agent that has one. Git is the only
@@ -8,7 +8,7 @@ channel between them. The exchange is committed to the work repository, so
 the record of how the repository was built stays in the repository.
 
 Canonical URL, pinned so both sides read identical rules:
-`https://raw.githubusercontent.com/spincyc/dotfiles/relay-v3/relay/PROTOCOL.md`
+`https://raw.githubusercontent.com/spincyc/dotfiles/relay-v4/relay/PROTOCOL.md`
 
 The user gives the planner that URL to open a run. The planner passes it on
 in the handoff line, which is how the executor finds it.
@@ -139,7 +139,7 @@ front matter:
 
 ```
 ---
-protocol: relay-v3
+protocol: relay-v4
 run: 2026-08-31-01
 turn: 002
 role: executor
@@ -229,7 +229,7 @@ user to paste. It begins with `#` so that a paste into a shell prompt is
 inert as a comment rather than a half-executed command.
 
 ```
-# relay relay-v3 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v3/relay/PROTOCOL.md, initialize the clean checkout on feat/relay as it permits, run preflight, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, claim the turn, and execute that brief
+# relay relay-v4 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | turn 001 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v4/relay/PROTOCOL.md, initialize the clean checkout on feat/relay as it permits, run preflight, then git show 4cf777c:.agent/runs/2026-08-31-01/001-brief.md, claim the turn, and execute that brief
 ```
 
 - Substitute a real sha. Never emit a literal `<sha>` placeholder.
