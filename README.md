@@ -668,10 +668,12 @@ version a caller expects, and `relay` refuses a mismatch rather than
 half-implementing another revision; `relay --version` reports the one it
 implements.
 
-The document is immutable per version, so each version keeps its own branch
-and its own permanent URL — `relay-v5` is frozen at the commit that published
-it, and `main` carries the current one. A planner is given the URL of the
-version its run will use, and both sides then read identical rules.
+The document is immutable per version, so each version is tagged at the commit
+that completed it — `relay-v1` through `relay-v6` — and the tag is what the
+canonical URL pins. A planner is given the URL of the version its run will
+use, and both sides then read identical rules. Releasing a version is
+therefore an annotated tag on the commit where the document, the templates and
+the tool agree, not a branch to maintain.
 
 `relay-v6` adds the launch handoff: alongside the portable `#` line the
 planner may emit one command the user runs directly.
