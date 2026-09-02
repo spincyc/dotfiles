@@ -12,7 +12,7 @@ disposable and the sweep acted on facts that had since changed.
 import re
 import shutil
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from . import branches, guidance, names, repos, scratch, sessions, slots
@@ -36,9 +36,57 @@ FAILED = "failed"
 # not look like legacy two-component workspaces. Older workspaces are still
 # recognised by their established depth and guidance files.
 MARKER = ".wt-workspace"
-MARKER_CONTENT = "wt-workspace-v1\n"
+MARKER_VERSION = "wt-workspace-v1"
+MARKER_CONTENT = f"{MARKER_VERSION}\n"
+MARKER_BRANCH = "branch"
 GROUP_MARKER = ".wt-group"
 GROUP_MARKER_CONTENT = "wt-group-v1\n"
+
+
+def marker_text(branch: str | None) -> str:
+    """The marker a workspace carries, naming a branch it was pinned to.
+
+    A workspace normally works on `<prefix>/<slug>`, which is derived and
+    needs no recording. One pinned to a branch someone else named — the
+    branch a relay run was opened on, say — has nothing to derive it from,
+    so the marker is where it lives: every verb that judges a clone reads
+    the branch from the same place, rather than each deriving a name the
+    clones are not on.
+    """
+    if branch is None:
+        return MARKER_CONTENT
+    return f"{MARKER_VERSION}\n{MARKER_BRANCH}: {branch}\n"
+
+
+def read_marker(path: Path) -> str | None:
+    """The branch a workspace marker pins, or None when it pins none.
+
+    Raises on anything this `wt` does not recognise. A workspace whose
+    branch cannot be read is one whose clones cannot be judged, and falling
+    back to `<prefix>/<slug>` for it would report the wrong upstream, push
+    the wrong branch, and let a sweep read unsaved work as saved.
+    """
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise WtError(f"cannot read wt marker {path}: {error}") from error
+    lines = content.splitlines()
+    if not lines or lines[0] != MARKER_VERSION:
+        raise WtError(f"unrecognised wt marker: {path}")
+    branch: str | None = None
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        key, separator, value = line.partition(":")
+        if not separator or key.strip() != MARKER_BRANCH:
+            raise WtError(f"unrecognised wt marker: {path}")
+        branch = value.strip()
+        # Cheaply, because this is read on every question about the
+        # workspace; the full reference rules are asked once, on the way in.
+        if not branch or branch.split() != [branch]:
+            raise WtError(f"wt marker names an unusable branch: {path}")
+    return branch
+
 
 Step = tuple[str, str]
 OnStep = Callable[[str, str], None]
@@ -69,10 +117,24 @@ class Workspace:
 
     name: str
     config: Config
+    # A branch the caller named on this invocation, before the workspace
+    # exists to have recorded one. It is what `create` writes down.
+    pin: str | None = None
 
     @property
     def path(self) -> Path:
         return self.config.root / self.name
+
+    def pinned_to(self, branch: str | None) -> "Workspace":
+        """The same workspace, working on a branch the caller named."""
+        return replace(self, pin=branch)
+
+    def recorded_branch(self) -> str | None:
+        """The branch this workspace's marker pins, if it pins one."""
+        marker = self.path / MARKER
+        if marker.is_symlink() or not marker.is_file():
+            return None
+        return read_marker(marker)
 
     @property
     def project(self) -> str:
@@ -85,7 +147,11 @@ class Workspace:
     @property
     def branch(self) -> str:
         """The branch every clone in this workspace commits to."""
-        return branches.name(self.config.branch_prefix, self.slug)
+        return (
+            self.pin
+            or self.recorded_branch()
+            or branches.name(self.config.branch_prefix, self.slug)
+        )
 
     def exists(self) -> bool:
         return self.path.is_dir()
@@ -107,6 +173,18 @@ class Workspace:
             raise WtError(
                 f"{self.name} is a stack group; name a workspace leaf below it"
             )
+        if self.pin is not None and self.exists():
+            # Which branch a workspace works on is decided when it is
+            # created. Changing it afterwards would leave the clones already
+            # in it on a branch nothing here names any more.
+            settled = self.recorded_branch() or branches.name(
+                self.config.branch_prefix, self.slug
+            )
+            if settled != self.pin:
+                raise WtError(
+                    f"{self.name} already works on {settled}, not "
+                    f"{self.pin}; a branch is chosen when the workspace is"
+                )
         if not names.valid_branch(self.branch):
             # Asked once, here, about the string that actually becomes the
             # branch — the slug alone is not it, and a prefix git dislikes
@@ -133,7 +211,7 @@ class Workspace:
                 _write_control_file(
                     current, GROUP_MARKER, GROUP_MARKER_CONTENT
                 )
-        _write_control_file(self.path, MARKER, MARKER_CONTENT)
+        _write_marker(self.path, self.pin)
         guidance.write(self.path, self.name, self.branch, force=force_guidance)
         return created
 
@@ -423,6 +501,28 @@ def _ensure_directory(path: Path) -> None:
         path.mkdir(parents=True)
         path.chmod(0o755)
     names.assert_owned_directory(path)
+
+
+def _write_marker(directory: Path, pin: str | None) -> None:
+    """Write the workspace marker, or leave an existing one agreeing with it.
+
+    Unlike the group marker this one carries a value, so it is validated by
+    reading rather than by comparing bytes: a workspace pinned to a branch
+    and one that derives its own both have to keep their marker across every
+    later `wt new`.
+    """
+    marker = directory / MARKER
+    if marker.is_symlink():
+        raise WtError(f"wt marker must not be a symlink: {marker}")
+    if marker.exists():
+        if not marker.is_file():
+            raise WtError(f"wt marker is not a file: {marker}")
+        recorded = read_marker(marker)
+        if pin is not None and recorded != pin and recorded is not None:
+            raise WtError(f"{marker} already names {recorded}, not {pin}")
+        if recorded is not None or pin is None:
+            return
+    marker.write_text(marker_text(pin), encoding="utf-8")
 
 
 def _write_control_file(directory: Path, name: str, expected: str) -> None:

@@ -22,7 +22,7 @@ _wt_launch_pending() {
     fi
     case ${words[index]} in
       --) return 1 ;;
-      --seed|--seed-file) skip=1 ;;
+      --seed|--seed-file|-b|--branch) skip=1 ;;
       -*) ;;
       *) return 1 ;;
     esac
@@ -34,12 +34,14 @@ _wt_launch() {
   local -a launch_options
   launch_options=(
     '--new:start a fresh session instead of resuming the last one'
+    '--branch:work on this branch instead of the derived one'
     '--seed:open the agent with this prompt'
     '--seed-file:read that prompt from a file, or - for stdin'
   )
   case ${words[CURRENT-1]} in
     --seed-file) _files; return ;;
     --seed) _message 'seed prompt'; return ;;
+    -b|--branch) _message 'branch name'; return ;;
   esac
   local separator=${words[(I)--]}
   if (( separator && separator < CURRENT )); then
@@ -94,12 +96,20 @@ _wt() {
     claude|codex|droid)
       _wt_launch 3
       ;;
-    --new|--seed|--seed-file|--seed=*|--seed-file=*)
+    --new|--seed|--seed-file|-b|--branch|--seed=*|--seed-file=*|--branch=*)
       # A leading launch option is a launch under $WT_AGENT that has not
       # reached its workspace yet.
       _wt_launch 2
       ;;
-    path|branch|status|log|fetch|sync|push|tidy|sweep|rm|new)
+    new)
+      # -b is the only option new takes a value for.
+      if [[ ${words[CURRENT-1]} == (-b|--branch) ]]; then
+        _message 'branch name'
+      else
+        _wt_launch_pending 3 && _wt_workspaces
+      fi
+      ;;
+    path|branch|status|log|fetch|sync|push|tidy|sweep|rm)
       (( CURRENT == 3 )) && _wt_workspaces
       ;;
     git|exec|clone)
@@ -109,6 +119,8 @@ _wt() {
         _wt_workspaces
       elif [[ ${words[CURRENT-1]} == (-o|--owner) ]]; then
         _message 'owner directory'
+      elif [[ ${words[CURRENT-1]} == (-b|--branch) ]]; then
+        _message 'branch name'
       else
         _default
       fi

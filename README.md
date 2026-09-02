@@ -336,6 +336,28 @@ therefore explicit: `wt push`, or `git push -u origin "$WT_BRANCH"` inside
 one clone. `wt check` warns about a repository that has left the branch, and
 `WT_BRANCH_PREFIX` renames the `feature` half.
 
+A workspace can work on a branch it did not derive. `-b` (`--branch`) on `wt
+new`, `wt clone` or a launch names one, and it is recorded in the workspace's
+`.wt-workspace`:
+
+```sh
+wt new -b relay/2026-09-02-01 telos/relay-run
+wt clone telos/relay-run spincyc/telos   # lands on relay/2026-09-02-01
+wt claude telos/relay-run                # so does everything after it
+```
+
+That is what every verb then means by "the workspace branch": the guidance
+written into `AGENTS.md`, the branch `wt clone` checks out, the one `wt push`
+publishes and `wt status` compares against, and the one `wt check` warns a
+clone has left. Without it a run on someone else's branch leaves every clone
+permanently "off the workspace branch", which makes `wt push` skip it and the
+upstream column say the wrong thing.
+
+The branch is chosen when the workspace is created and not afterwards: naming
+a different one for an existing workspace is refused, since the clones already
+in it are on the branch it was created with. Naming the one it already works on
+is not a change and is allowed.
+
 `wt push` publishes only where there is something to publish: it skips a
 clone that has left the workspace branch, and one whose commits a remote
 already has. A blanket `git push -u` across the workspace would create a

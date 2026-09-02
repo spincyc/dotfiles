@@ -175,18 +175,32 @@ def _workspace(workspace: workspaces.Workspace) -> list[CheckResult]:
     directory = workspace.path
     results: list[CheckResult] = []
 
-    for marker_name, expected in (
-        (workspaces.MARKER, workspaces.MARKER_CONTENT),
-        (workspaces.GROUP_MARKER, workspaces.GROUP_MARKER_CONTENT),
-    ):
-        marker = directory / marker_name
-        if not marker.exists() and not marker.is_symlink():
-            continue
+    marker = directory / workspaces.MARKER
+    if marker.exists() or marker.is_symlink():
+        try:
+            if marker.is_symlink() or not marker.is_file():
+                raise WtError("not a file")
+            # The workspace marker carries a value, so it is read rather
+            # than compared. An unreadable one is reported and then stops
+            # this workspace: every question below asks which branch its
+            # clones belong on, and that is exactly what was lost.
+            workspaces.read_marker(marker)
+        except (OSError, UnicodeError, WtError):
+            return results + [
+                CheckResult(
+                    Level.FAIL,
+                    f"{workspace.name} has an invalid {workspaces.MARKER}",
+                )
+            ]
+
+    group = directory / workspaces.GROUP_MARKER
+    if group.exists() or group.is_symlink():
         try:
             valid = (
-                marker.is_file()
-                and not marker.is_symlink()
-                and marker.read_text(encoding="utf-8") == expected
+                group.is_file()
+                and not group.is_symlink()
+                and group.read_text(encoding="utf-8")
+                == workspaces.GROUP_MARKER_CONTENT
             )
         except (OSError, UnicodeError):
             valid = False
@@ -194,7 +208,8 @@ def _workspace(workspace: workspaces.Workspace) -> list[CheckResult]:
             results.append(
                 CheckResult(
                     Level.FAIL,
-                    f"{workspace.name} has an invalid {marker_name}",
+                    f"{workspace.name} has an invalid "
+                    f"{workspaces.GROUP_MARKER}",
                 )
             )
 

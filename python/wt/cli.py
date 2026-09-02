@@ -24,7 +24,7 @@ from .errors import (
 )
 
 USAGE = """\
-Usage: wt [claude|codex|droid] [--new] [--seed[-file] <x>]
+Usage: wt [claude|codex|droid] [--new] [-b <branch>] [--seed[-file] <x>]
           [<project>/]<slug>[/<child>...] [agent-args...]
        wt <verb> [<workspace>] [args...]
 
@@ -37,6 +37,8 @@ Launch:
 
   --new                           Start a fresh session; without it a launch
                                   resumes the one this agent had here
+  -b, --branch <branch>           Work on this branch instead of the derived
+                                  one; recorded when the workspace is created
   --seed <text>                   Open the agent with this prompt, given to
                                   it as its trailing prompt argument
   --seed-file <path>              The same prompt read from a file, or from
@@ -53,18 +55,21 @@ driving the agent's own session flags yourself.
 
 A workspace is a leaf named <project>/<slug>[/<child>...]. Intermediate
 components group a stack of workspaces. Every repository in a leaf works on
-feature/<slug>[/<child>...] ($WT_BRANCH_PREFIX plus the complete slug stack).
-Existing leaves may be selected by full name, branch, slug stack, unique leaf,
-or unambiguous component prefixes.
+feature/<slug>[/<child>...] ($WT_BRANCH_PREFIX plus the complete slug stack),
+unless -b named another branch when the workspace was created, which is then
+recorded in its .wt-workspace and is what every verb here means by "the
+workspace branch". Existing leaves may be selected by full name, branch, slug
+stack, unique leaf, or unambiguous component prefixes.
 
 Verbs:
   ls [-q]                         List workspaces and the repos they hold;
                                   -q prints bare names, one per line
-  new [--force] [<workspace>]     Create a workspace, do not launch an agent
+  new [--force] [-b <branch>]     Create a workspace, do not launch an agent
+      [<workspace>]
   path [<workspace>]              Print a workspace directory
   pwd                             Print the root of the workspace you are in
   clone [-w <ws>] [-o <owner>]    Clone owner/repo, a URL, or a local path to
-        <repo>...                 <owner>/<repo>, on the workspace branch;
+        [-b <branch>] <repo>...   <owner>/<repo>, on the workspace branch;
                                   -o files one clone under a chosen owner
   branch [<workspace>]            Print the workspace branch
   git [-w <workspace>] [--] <a>.. Run git in every repo of the workspace
@@ -233,6 +238,7 @@ def cmd_ls(config: Config, args: list[str]) -> int:
 
 def cmd_new(config: Config, args: list[str]) -> int:
     force, args = _take_force(args)
+    pin, args = _take_option(args, "-b", "--branch", what="branch")
     if args:
         workspace = workspaces.reuse_or_named(
             config, args[0], abbreviate=False
@@ -243,6 +249,7 @@ def cmd_new(config: Config, args: list[str]) -> int:
         workspace = workspaces.current(config)
         if workspace is None:
             raise WtError(f"new needs a workspace name outside {config.root}")
+    workspace = workspace.pinned_to(pin)
     if workspace.create(force_guidance=force):
         print(
             f"created  {workspace.path}  branch {workspace.branch}",
@@ -279,11 +286,13 @@ def cmd_branch(config: Config, args: list[str]) -> int:
 
 def cmd_clone(config: Config, args: list[str]) -> int:
     named, args = _take_option(args, "-w", "--workspace")
-    owner, args = _take_option(args, "-o", "--owner")
+    owner, args = _take_option(args, "-o", "--owner", what="owner")
+    pin, args = _take_option(args, "-b", "--branch", what="branch")
     if named is not None:
         workspace, rest = workspaces.reuse_or_named(config, named), args
     else:
         workspace, rest = workspaces.resolve(config, args)
+    workspace = workspace.pinned_to(pin)
     if not rest:
         raise UsageError("clone needs at least one repository")
     if owner is not None and len(rest) > 1:
@@ -304,13 +313,16 @@ def cmd_clone(config: Config, args: list[str]) -> int:
 
 
 def _take_option(
-    args: list[str], *spellings: str
+    args: list[str], *spellings: str, what: str = "workspace"
 ) -> tuple[str | None, list[str]]:
-    """Read `-w NAME` from anywhere in the arguments."""
+    """Read `-w NAME` or `--long=VALUE` from anywhere in the arguments."""
     for index, arg in enumerate(args):
+        name, assigned, inline = arg.partition("=")
+        if assigned and name.startswith("--") and name in spellings:
+            return inline, args[:index] + args[index + 1:]
         if arg in spellings:
             if index + 1 >= len(args):
-                raise UsageError(f"{arg} needs a workspace")
+                raise UsageError(f"{arg} needs a {what}")
             return args[index + 1], args[:index] + args[index + 2:]
     return None, args
 
@@ -864,8 +876,9 @@ def agent_environment(
 
 
 SEED_OPTIONS = ("--seed", "--seed-file")
+BRANCH_OPTIONS = ("-b", "--branch")
 NEW_OPTION = "--new"
-LAUNCH_OPTIONS = (*SEED_OPTIONS, NEW_OPTION)
+LAUNCH_OPTIONS = (*SEED_OPTIONS, *BRANCH_OPTIONS, NEW_OPTION)
 
 
 def _read_seed(path: str) -> str:
@@ -889,6 +902,7 @@ class LaunchOptions:
     """What `wt` itself was told about a launch, before the agent's own."""
 
     seed: str | None = None
+    branch: str | None = None
     fresh: bool = False
 
 
@@ -904,6 +918,7 @@ def _take_launch_options(
     """
     text: str | None = None
     source: str | None = None
+    branch: str | None = None
     fresh = False
     kept: list[str] = []
     rest = list(args)
@@ -921,12 +936,18 @@ def _take_launch_options(
                 raise UsageError(f"{NEW_OPTION} takes no value")
             fresh = True
             continue
-        if assigned:
+        wants = "branch" if name in BRANCH_OPTIONS else "prompt"
+        if assigned and name.startswith("--"):
             value = inline
         elif rest:
             value = rest.pop(0)
         else:
-            raise UsageError(f"{name} needs a prompt")
+            raise UsageError(f"{name} needs a {wants}")
+        if name in BRANCH_OPTIONS:
+            if branch is not None:
+                raise UsageError("a launch works on one branch, not two")
+            branch = value
+            continue
         if text is not None:
             raise UsageError(
                 f"{source} and {name} name one seed prompt, not two"
@@ -940,7 +961,7 @@ def _take_launch_options(
         text = text.strip()
         if not text:
             raise UsageError(f"{source} gave an empty seed prompt")
-    return LaunchOptions(seed=text, fresh=fresh), kept
+    return LaunchOptions(seed=text, branch=branch, fresh=fresh), kept
 
 
 def _restore_terminal_stdin() -> None:
@@ -976,7 +997,9 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
     if shutil.which(agent) is None:
         raise WtError(f"agent is not installed: {agent}")
 
-    workspace = workspaces.reuse_or_named(config, args[0])
+    workspace = workspaces.reuse_or_named(config, args[0]).pinned_to(
+        options.branch
+    )
 
     # The pool stays referenced for the rest of this process: it owns the open
     # descriptor that holds the slot across the exec below. Take it before

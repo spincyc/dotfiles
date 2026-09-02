@@ -370,6 +370,49 @@ assert_contains "$clone_out" 'cloned   spincyc/alpha  on feature/demo'
 clone_again=$(wt_run clone telos/demo "file://$origins/spincyc/alpha" 2>&1)
 assert_contains "$clone_again" 'ok       spincyc/alpha'
 
+printf '# a workspace can be pinned to a branch it did not derive\n'
+# A relay run works on the branch the planner named, which no slug derives.
+pinned_out=$(wt_run new -b relay/run-01 telos/pinned 2>&1)
+assert_contains "$pinned_out" 'branch relay/run-01'
+assert_contains "$(cat "$work/telos/pinned/.wt-workspace")" 'branch: relay/run-01'
+assert_contains "$(wt_run branch telos/pinned)" 'relay/run-01'
+grep -Fq 'relay/run-01' "$work/telos/pinned/AGENTS.md" ||
+  fail "the workspace guidance names the derived branch, not the pinned one"
+wt_run clone telos/pinned "file://$origins/spincyc/alpha" >/dev/null 2>&1 ||
+  fail "cloning into a pinned workspace failed"
+[ "$(branch_of "$work/telos/pinned/spincyc/alpha")" = "relay/run-01" ] ||
+  fail "the clone did not land on the pinned branch"
+
+printf '# the pin is what check, status and push mean by the branch\n'
+wt_run check >/dev/null 2>&1 || fail "a pinned workspace failed the check"
+assert_contains "$(wt_run status telos/pinned)" 'relay/run-01'
+printf 'pinned work\n' >"$work/telos/pinned/spincyc/alpha/WORK.md"
+git -C "$work/telos/pinned/spincyc/alpha" add WORK.md
+git -C "$work/telos/pinned/spincyc/alpha" commit --quiet -m 'pinned work'
+assert_contains "$(wt_run push telos/pinned 2>/dev/null)" \
+  'pushed   spincyc/alpha  relay/run-01'
+[ "$(upstream_of "$work/telos/pinned/spincyc/alpha")" = \
+  "origin/relay/run-01" ] || fail "push did not publish the pinned branch"
+
+printf '# the branch is chosen when the workspace is, not after\n'
+if repin=$(wt_run new -b relay/run-02 telos/pinned 2>&1); then
+  fail "a pinned workspace was repinned"
+fi
+assert_contains "$repin" 'already works on relay/run-01'
+if repin_plain=$(wt_run new -b relay/run-02 telos/demo 2>&1); then
+  fail "an unpinned workspace was pinned after the fact"
+fi
+assert_contains "$repin_plain" 'already works on feature/demo'
+# Naming the branch it already works on is not a change, so it is allowed.
+wt_run new -b relay/run-01 telos/pinned >/dev/null 2>&1 ||
+  fail "re-stating a workspace's own branch was refused"
+wt_run new -b feature/demo telos/demo >/dev/null 2>&1 ||
+  fail "re-stating a derived branch was refused"
+if no_branch=$(wt_run new -b telos/late 2>&1); then
+  fail "-b swallowed the workspace name and created one"
+fi
+wt_run rm -f telos/pinned >/dev/null 2>&1
+
 printf '# workspace is inferred from the current directory\n'
 wt_at "$work/telos/demo/spincyc/alpha" \
   clone "file://$origins/spincyc/beta" >/dev/null 2>&1 ||
@@ -505,6 +548,14 @@ if marker_out=$(wt_run check 2>&1); then
   fail "check accepted an invalid workspace marker"
 fi
 assert_contains "$marker_out" 'telos/demo has an invalid .wt-workspace'
+printf 'wt-workspace-v1\nlanguage: en\n' >"$work/telos/demo/.wt-workspace"
+if wt_run check >/dev/null 2>&1; then
+  fail "check accepted a marker key it does not know"
+fi
+printf 'wt-workspace-v1\nbranch:\n' >"$work/telos/demo/.wt-workspace"
+if wt_run check >/dev/null 2>&1; then
+  fail "check accepted a marker naming no branch"
+fi
 printf 'wt-workspace-v1\n' >"$work/telos/demo/.wt-workspace"
 
 printf '# check warns about a repository off the workspace branch\n'
