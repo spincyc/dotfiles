@@ -25,7 +25,7 @@ The modules are meant to be reused on their own:
 ``relay.cli``       the ``relay`` command line
 """
 
-PROTOCOL_VERSION = "relay-v5"
+PROTOCOL_VERSION = "relay-v6"
 
 __all__ = [
     "PROTOCOL_VERSION",

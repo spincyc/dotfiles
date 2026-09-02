@@ -1,5 +1,5 @@
 ---
-protocol: relay-v5
+protocol: relay-v6
 run: <UTC-YYYY-MM-DD>-<nn>
 turn: <nnn>
 role: planner

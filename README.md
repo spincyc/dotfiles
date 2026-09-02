@@ -263,7 +263,7 @@ agent, so a heredoc still leaves an interactive session to type into:
 
 ```sh
 wt claude telos/agent-sync --seed-file - <<'PROMPT'
-read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v5/relay/PROTOCOL.md
+read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v6/relay/PROTOCOL.md
 and execute the brief it points at
 PROMPT
 ```
@@ -619,6 +619,25 @@ Each build is pinned to exactly one protocol version. `--protocol` states the
 version a caller expects, and `relay` refuses a mismatch rather than
 half-implementing another revision; `relay --version` reports the one it
 implements.
+
+The document is immutable per version, so each version keeps its own branch
+and its own permanent URL — `relay-v5` is frozen at the commit that published
+it, and `main` carries the current one. A planner is given the URL of the
+version its run will use, and both sides then read identical rules.
+
+`relay-v6` adds the launch handoff: alongside the portable `#` line the
+planner may emit one command the user runs directly.
+
+```
+wt claude relay/2026-09-02-01 -b feat/relay --relay spincyc/dotfiles@<40-hex sha>
+```
+
+That line carries no brief, no prompt, and no prose — only a workspace, a
+branch, a repository, and the commit the brief was published in. Everything
+else, including the prompt itself, `wt` derives from the brief's own front
+matter at that commit, which is what keeps generated text out of shell
+quoting. The portable line is still emitted for every turn and is still
+sufficient on its own, so a machine without `wt` loses nothing.
 
 The exit statuses carry the outcome: `0` success, `2` a usage error, `3`
 blocked, and `5` lint findings. A blocked run prints a `blocked: <token>`

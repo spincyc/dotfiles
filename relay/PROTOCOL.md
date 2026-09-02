@@ -1,6 +1,6 @@
 # Agent relay protocol
 
-Version `relay-v5`.
+Version `relay-v6`.
 
 A planning agent with git write access and no useful shell in the user's
 checkout hands work to an executing agent that has one. Git is the only
@@ -8,7 +8,7 @@ channel between them. The exchange is committed to the work repository, so
 the record of how the repository was built stays in the repository.
 
 Canonical URL, pinned so both sides read identical rules:
-`https://raw.githubusercontent.com/spincyc/dotfiles/relay-v5/relay/PROTOCOL.md`
+`https://raw.githubusercontent.com/spincyc/dotfiles/relay-v6/relay/PROTOCOL.md`
 
 The user gives the planner that URL to open a run. The planner passes it on
 in the handoff line, which is how the executor finds it.
@@ -57,6 +57,12 @@ that the executor's checkout has push credentials and a remote named `origin`.
 When the workspace helper can select a clone branch, select the handoff branch
 at creation time; that is the preferred bootstrap and makes the branch switch
 below unnecessary.
+
+One further question decides whether the run carries a launch handoff as well
+as the portable one: whether the user has a workspace launcher that
+understands this protocol, and wants to be handed a command rather than a
+session to paste into. A no here costs nothing — the portable handoff is
+always emitted either way.
 
 ## Workspace initialization
 
@@ -164,7 +170,7 @@ these fields in this order:
 
 ```
 ---
-protocol: relay-v5
+protocol: relay-v6
 run: 2026-08-31-01
 turn: 002
 role: executor
@@ -243,7 +249,7 @@ Brief `001`, written by the planner:
 
 ```
 ---
-protocol: relay-v5
+protocol: relay-v6
 run: 2026-08-31-01
 turn: 001
 role: planner
@@ -279,7 +285,7 @@ Result `002`, written by the executor:
 
 ```
 ---
-protocol: relay-v5
+protocol: relay-v6
 run: 2026-08-31-01
 turn: 002
 role: executor
@@ -338,8 +344,13 @@ The planner emits one physical line, containing no newline character, for the
 user to paste. It begins with `#` so that a paste into a shell prompt is
 inert as a comment rather than a half-executed command.
 
+This is the portable handoff. It is always emitted, it depends on nothing
+being installed, and it is what the rest of this document means by *the
+handoff line*. A run may additionally carry the launch handoff below, which
+is an accelerator and never a substitute.
+
 ```
-# relay relay-v5 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | brief 001 | claim 002 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v5/relay/PROTOCOL.md, initialize the clean checkout on feat/relay as it permits, run preflight, then git show 4cf777c1b9e0a3d5f8c2b7a4e6d9f1c3a5b8e0d2:.agent/runs/2026-08-31-01/001-brief.md, claim turn 002, and execute that brief
+# relay relay-v6 | agent claude | model opus | reasoning high | state clean | run 2026-08-31-01 | brief 001 | claim 002 | repo spincyc/dotfiles | branch feat/relay | pasting this authorizes commits and pushes to feat/relay for this run | agent prompt, not a shell command: read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v6/relay/PROTOCOL.md, initialize the clean checkout on feat/relay as it permits, run preflight, then git show 4cf777c1b9e0a3d5f8c2b7a4e6d9f1c3a5b8e0d2:.agent/runs/2026-08-31-01/001-brief.md, claim turn 002, and execute that brief
 ```
 
 Content rules:
@@ -373,6 +384,42 @@ Presentation rules:
 - The fenced block contains only the handoff line: no prompt marker, no
   wrapping text, no second line, and no shell-language annotation.
 - Explanatory prose, if any, appears outside the fenced block.
+
+### Launch handoff
+
+The portable handoff asks the user to start a session and then paste a
+prompt into it. Where a workspace launcher can do both at once, the planner
+may also emit one line the user runs directly:
+
+```
+wt claude relay/2026-08-31-01 -b feat/relay --relay spincyc/dotfiles@4cf777c1b9e0a3d5f8c2b7a4e6d9f1c3a5b8e0d2
+```
+
+Everything the executor needs beyond those tokens — the run, the turn to
+read, the turn to claim, the protocol version, and the prompt itself — the
+launcher derives from the brief's own front matter at that commit. That is
+the whole point of the form: the planner ships a pointer, not prose.
+
+- The line carries no brief, no prompt, no objective, and no prose of any
+  kind. The rule against generated text inside shell quoting is unchanged;
+  this form obeys it by having no generated text to quote.
+- Every generated token matches `[A-Za-z0-9._/@-]+`, and the sha matches
+  `[0-9a-f]{40}`. No shell metacharacter can appear in a conforming line. A
+  field that would not match is not escaped or quoted around: the planner
+  emits the portable handoff alone and says why.
+- The planner emits it only when the preconditions recorded that the user
+  has the launcher and wants this form. It is never a run's only handoff,
+  so a user without the launcher, or on another machine, loses nothing.
+- The user runs it or ignores it. Running it authorizes exactly what the
+  portable handoff authorizes, for the same named run, and nothing more.
+- On a resume turn, the same line is re-run with the new brief's sha. The
+  launcher is responsible for continuing the session rather than opening a
+  second one; a run never has two live executors.
+
+The two lines are emitted together, portable first, each in its own fenced
+block, with the launch line labelled as a command and the portable line
+labelled as a prompt. A user who reads only one must not be able to mistake
+which is which.
 
 ## Context boundary
 
@@ -427,6 +474,10 @@ run.
 - A handoff line that omits `agent`, `model`, `reasoning`, `state`, `brief`,
   or `claim` is invalid; re-emit it. Never launch the user toward a session
   without all six.
+- Emit the portable handoff for every turn, whether or not a launch handoff
+  accompanies it. Before emitting a launch handoff, check every generated
+  token against the charset that section gives; on any miss, emit the
+  portable handoff alone and say which field failed.
 - A brief that omits `subagents`, gives a range instead of one nonnegative
   integer, or does not explain the count in its Delegation plan is invalid;
   correct it before publishing.
@@ -601,5 +652,23 @@ exit codes instead of leaving each executor to reinvent the predicates.
   must be a hard stop rather than a silent behavior change.
 - Its absence is not a blocker. An executor without it follows the same steps
   by hand and says so in the result.
-- Nothing in a run may depend on the tool being present, and no handoff line
-  may instruct the user to install it.
+- Nothing in a run may depend on any tool being present. The portable handoff
+  is emitted for every turn and is always sufficient, which is what keeps
+  that true while a launch handoff exists.
+- No handoff line may instruct the user to install anything. A launch handoff
+  is emitted because the preconditions recorded the launcher is already
+  there, never to introduce it.
+
+The same repository publishes a workspace launcher, `wt`, which is what a
+launch handoff invokes. It creates or reuses a disposable workspace, clones
+the repository onto the branch the handoff names, reads the brief at the
+pinned commit, derives the run, the turns, and the protocol version from
+that brief's own front matter, and opens the executor with the prompt the
+portable handoff would have carried. The three bullets above bind it exactly
+as they bind `relay`: it is an accelerator, a version mismatch is a hard
+stop, and a run that cannot use it proceeds unchanged.
+
+A launcher must not invent any field it cannot read. The brief's front
+matter is the authority for the run, the turn, and the branch; a `branch:`
+that disagrees with the launch handoff is a protocol violation to report,
+not a difference to reconcile.
