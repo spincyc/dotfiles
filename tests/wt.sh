@@ -120,7 +120,9 @@ assert_contains() {
 # a launch handed it. A workspace named for the test would otherwise match
 # these greps through the workspace= field.
 agent_args() {
-  printf '%s\n' "$1" | sed -n 's/.* args=//p'
+  # Anchored on the stand-in's own line: a setup command's output can carry
+  # an args= of its own, and an unanchored match would splice the two.
+  printf '%s\n' "$1" | sed -n 's/^agent=.* args=//p'
 }
 assert_agent_args() {
   [ "$(agent_args "$1")" = "$2" ] || {
@@ -426,6 +428,38 @@ assert_contains \
   "$(wt_run claude triptych/proper-54 -r "file://$origins/spincyc/alpha" \
     2>&1)" \
   'ok       spincyc/alpha'
+printf '# -x prepares the clones before the agent, and takes the line\n'
+# The setup step is repository tooling, so it runs where wt exec runs it:
+# in every clone, with $WT_REPO naming each. Trailing words are the
+# command's, including ones that look like wt options.
+for prepared_repo in alpha beta; do
+  mkdir -p "$work/triptych/proper-54/spincyc/$prepared_repo/tools"
+  cat >"$work/triptych/proper-54/spincyc/$prepared_repo/tools/tpt" <<'TPT'
+#!/bin/sh
+printf 'tpt repo=%s args=%s\n' "$WT_REPO" "$*"
+TPT
+  chmod 755 -- "$work/triptych/proper-54/spincyc/$prepared_repo/tools/tpt"
+done
+prepared=$(wt_run claude --new triptych/proper-54 --seed 'after the setup' \
+  -x ./tools/tpt proper 54-fourteenth seed --provider claude 2>&1)
+assert_contains "$prepared" 'tpt repo=spincyc/alpha'
+assert_contains "$prepared" 'tpt repo=spincyc/beta'
+assert_contains "$prepared" 'args=proper 54-fourteenth seed --provider claude'
+assert_agent_args "$prepared" 'after the setup'
+
+printf '# a failing -x stops the launch instead of half-preparing it\n'
+if half=$(wt_run claude triptych/proper-54 -x sh -c 'exit 3' 2>&1); then
+  fail "a failing setup command still started an agent"
+fi
+assert_contains "$half" 'was not started in triptych/proper-54'
+if printf '%s\n' "$half" | grep -Fq 'agent=claude'; then
+  fail "a failing setup command still started an agent"
+fi
+if bare_exec=$(wt_run claude triptych/proper-54 -x 2>&1); then
+  fail "-x with no command was accepted"
+fi
+assert_contains "$bare_exec" 'the rest of the line'
+
 printf '# wt new opens one the same way, without an agent\n'
 new_out=$(wt_run new -b impl/proper-55 -r "file://$origins/spincyc/alpha" \
   triptych/proper-55 2>&1)

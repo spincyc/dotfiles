@@ -430,19 +430,36 @@ one clone. `wt check` warns about a repository that has left the branch, and
 `WT_BRANCH_PREFIX` renames the `feature` half.
 
 One launch opens a whole line of work. `-b` names the branch, `-r` clones what
-the work needs onto it, and `--seed` says what to do there:
+the work needs onto it, `-x` prepares it, and `--seed` says what to do there:
 
 ```sh
 wt claude triptych/proper-54 -b impl/proper-54-production \
-  -r spincyc/triptych --seed-file ~/p54.md
+  -r spincyc/triptych --seed-file ~/p54.md \
+  -x ./tools/tpt proper 54-fourteenth-after-pentecost seed --provider claude
 ```
 
-Before `-r` that was three commands — `wt new`, `wt clone -w`, then the launch
-— because nothing else clones. `-r` is repeatable, takes anything `wt clone`
-takes (`owner/repo`, a URL, or a path on this disk), and is a benign skip for
-a repository already there. `wt new` takes both options the same way, for
-opening a workspace without starting an agent. A spec `wt` cannot read an
-owner and repository out of is refused before the workspace is created.
+That was four commands before these options existed — `wt new`, `wt clone -w`,
+`wt exec -w`, then the launch — chained with `&&` and repeating the workspace
+name each time.
+
+`-r` is repeatable, takes anything `wt clone` takes (`owner/repo`, a URL, or a
+path on this disk), and is a benign skip for a repository already there. A spec
+`wt` cannot read an owner and repository out of is refused before the workspace
+is created. `wt new` takes `-b` and `-r` the same way, for opening a workspace
+without starting an agent.
+
+`-x` (`--exec`) runs its command exactly where `wt exec` runs one: in every
+clone, with `$WT_REPO` naming each, which is what makes a repository-relative
+`./tools/…` resolve. It takes **the rest of the line**, because a command is a
+list and there is no second separator to end one with — so it goes last, and
+trailing words that look like `wt` options are the command's. A failing `-x`
+stops the launch: nothing starts on a workspace that was only half prepared.
+It is a launch option only, since a terminal option on `wt new` would swallow
+the workspace name people put last.
+
+Running the setup step here rather than asking the agent to run it is the same
+argument as everywhere else in `wt`: a step described to an agent is a step it
+has to get right, and this one either worked or the launch stopped.
 
 `-b` (`--branch`) works on `wt new`, `wt clone` and a launch, and is recorded
 in the workspace's `.wt-workspace`, so a workspace can work on a branch it did
@@ -511,7 +528,7 @@ release: `aiq doctor` reports the switch on its `capture` line once it is
 supported.
 
 ```sh
-wt claude proj/slug -b impl/x -r own/repo --seed-file ./brief.md  # open one
+wt claude proj/slug -b impl/x -r own/repo --seed-file ./b.md -x ./setup.sh
 wt ls                                   # every workspace and the repos it holds
 wt ls -q                                # bare names, one per line, for scripts
 wt clone telos/agent-sync spincyc/telos # cloned onto feature/agent-sync

@@ -27,6 +27,7 @@ from .errors import (
 USAGE = """\
 Usage: wt [claude|codex|droid] [--new] [-b <branch>] [-r <repo>]...
           [--seed[-file] <x>] [<project>/]<slug>[/<child>...] [agent-args...]
+          [-x <command>...]
        wt <verb> [<workspace>] [args...]
 
 Launch:
@@ -42,6 +43,9 @@ Launch:
                                   one; recorded when the workspace is created
   -r, --clone <repo>              Clone owner/repo, a URL, or a local path
                                   into the workspace first; repeatable
+  -x, --exec <command>...         Run this in every repo before the agent,
+                                  as wt exec does; takes the rest of the
+                                  line, so it goes last
   --seed <text>                   Open the agent with this prompt, given to
                                   it as its trailing prompt argument
   --seed-file <path>              The same prompt read from a file, or from
@@ -71,8 +75,10 @@ agent rather than becoming it, so that when the session ends it can say
 whether the result reached origin and print what the run owes its planner.
 
 One launch does the whole opening: -b names the branch, -r clones what the
-work needs onto it, and --seed says what to do there, so a new line of work
-costs one command rather than new, clone and launch in sequence.
+work needs onto it, -x prepares it, and --seed says what to do there, so a new
+line of work costs one command rather than new, clone, exec and launch in
+sequence. A failing -x stops the launch: nothing starts on a workspace that
+was only half prepared.
 
 A workspace is a leaf named <project>/<slug>[/<child>...]. Intermediate
 components group a stack of workspaces. Every repository in a leaf works on
@@ -943,12 +949,14 @@ def agent_environment(
 SEED_OPTIONS = ("--seed", "--seed-file")
 BRANCH_OPTIONS = ("-b", "--branch")
 CLONE_OPTIONS = ("-r", "--clone")
+EXEC_OPTIONS = ("-x", "--exec")
 RELAY_OPTION = "--relay"
 NEW_OPTION = "--new"
 LAUNCH_OPTIONS = (
     *SEED_OPTIONS,
     *BRANCH_OPTIONS,
     *CLONE_OPTIONS,
+    *EXEC_OPTIONS,
     RELAY_OPTION,
     NEW_OPTION,
 )
@@ -977,6 +985,8 @@ class LaunchOptions:
     seed: str | None = None
     branch: str | None = None
     clones: tuple[clone.CloneSpec, ...] = ()
+    # Everything after -x, which is a command and not wt's to read further.
+    setup: tuple[str, ...] = ()
     relay: str | None = None
     fresh: bool = False
 
@@ -995,6 +1005,7 @@ def _take_launch_options(
     source: str | None = None
     branch: str | None = None
     clones: list[clone.CloneSpec] = []
+    setup: list[str] = []
     relay: str | None = None
     fresh = False
     kept: list[str] = []
@@ -1005,6 +1016,18 @@ def _take_launch_options(
             kept.extend(rest)
             break
         name, assigned, inline = head.partition("=")
+        if name in EXEC_OPTIONS:
+            # Terminal, because a command is a list and there is no second
+            # separator to end one with: everything after -x belongs to it,
+            # so wt's own options and the agent's go before.
+            if assigned or not rest:
+                raise UsageError(
+                    f"{name} takes the command to run, as the rest of the "
+                    f"line"
+                )
+            setup = rest
+            rest = []
+            continue
         if name not in LAUNCH_OPTIONS:
             kept.append(head)
             continue
@@ -1069,6 +1092,7 @@ def _take_launch_options(
         seed=text,
         branch=branch,
         clones=tuple(clones),
+        setup=tuple(setup),
         relay=relay,
         fresh=fresh,
     ), kept
@@ -1261,6 +1285,20 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
     if workspace.create():
         print(f"created  {workspace.path}", file=sys.stderr)
     _clone_specs(workspace, list(options.clones))
+    if options.setup:
+        # Before the agent, and by the same rules as `wt exec`: in every
+        # clone, with $WT_REPO naming each. A setup step described to an
+        # agent instead is a step it has to get right; run here it either
+        # worked or the launch stops, and nothing starts on a half-prepared
+        # workspace.
+        code = _fan_out(
+            workspace, list(options.setup[1:]), program=options.setup[0]
+        )
+        if code != 0:
+            raise WtError(
+                f"the -x command failed, so {agent} was not started in "
+                f"{workspace.name}"
+            )
 
     turn = None
     if options.relay is not None:
