@@ -92,7 +92,8 @@ Verbs:
                                   (pull is not an alias; sync rewrites)
   push [<workspace>]              Publish the workspace branch where there is
                                   work to publish
-  agents                          Show the agents running right now
+  agents                          Show the agents running right now, with the
+                                  run and turn of any relay worker among them
   check                           Sanity-check the environment and layout
   tidy [-n] [<workspace>]         Delete .scratch and Git-ignored files
   sweep [-n] [<workspace>]        Remove workspaces whose work is all pushed

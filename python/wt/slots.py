@@ -52,12 +52,6 @@ class SlotState:
         """The workspace this slot was taken for, or empty when unnamed."""
         return self.field("workspace")
 
-    @property
-    def relay(self) -> str:
-        """The relay run and turn this slot is working, when it is one."""
-        run, turn = self.field("run"), self.field("turn")
-        return f"{run} turn {turn}" if run and turn else ""
-
 
 @dataclass(frozen=True)
 class BusyAgents:
