@@ -22,7 +22,7 @@ _wt_launch_pending() {
     fi
     case ${words[index]} in
       --) return 1 ;;
-      -x|--exec) return 1 ;;
+      -x|--exec|--seed-exec) return 1 ;;
       --seed|--seed-file|-b|--branch|-r|--clone|--relay) skip=1 ;;
       -*) ;;
       *) return 1 ;;
@@ -38,6 +38,7 @@ _wt_launch() {
     '--branch:work on this branch instead of the derived one'
     '--clone:clone owner/repo, a URL or a path into the workspace'
     '--exec:run this in every repo before the agent; takes the rest'
+    '--seed-exec:the same, and what it prints opens the agent'
     '--relay:open a relay turn from <owner>/<repo>@<brief sha>'
     '--seed:open the agent with this prompt'
     '--seed-file:read that prompt from a file, or - for stdin'
@@ -50,7 +51,7 @@ _wt_launch() {
     --relay) _message '<owner>/<repo>@<brief sha>'; return ;;
   esac
   local separator=${words[(I)--]}
-  local command=${words[(I)(-x|--exec)]}
+  local command=${words[(I)(-x|--exec|--seed-exec)]}
   if (( separator && separator < CURRENT )) ||
      (( command && command < CURRENT )); then
     # Past `--` every word is the agent's, and past -x every word is the
@@ -105,7 +106,8 @@ _wt() {
     claude|codex|droid)
       _wt_launch 3
       ;;
-    --new|--seed|--seed-file|-b|--branch|-r|--clone|-x|--exec|--relay|\
+    --new|--seed|--seed-file|--seed-exec|--relay|-b|--branch|\
+    -r|--clone|-x|--exec|\
     --seed=*|--seed-file=*|--branch=*|--clone=*|--relay=*)
       # A leading launch option is a launch under $WT_AGENT that has not
       # reached its workspace yet.

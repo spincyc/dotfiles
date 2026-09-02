@@ -291,15 +291,19 @@ to continue and is fresh; so is any agent not in that list, since guessing a
 flag wrong costs a session that will not start. Losing the record costs a
 resume and never work.
 
-Only `claude` can be resumed and seeded at once. `codex resume` reads its first
-positional as a session id and droid's `--resume` takes an optional session id,
-so in both a seed prompt would be read as a session to resume; `wt` refuses
-that combination and names `--new` rather than launching something that
-resumes nothing. A `--relay` turn is the exception: its prompt is derived
-rather than typed, so there is no combination for you to resolve and it opens
-a fresh session, saying so. Every brief is self-sufficient at its pinned
-commit, which is why the protocol calls `state: resume` a cost hint rather
-than a requirement.
+Only `claude` can be resumed and opened with a prompt at once. `codex resume`
+reads its first positional as a session id and droid's `--resume` takes an
+optional session id, so under either of those a prompt would be read as a
+session to resume. Asking for both there starts a **fresh session** and says
+so:
+
+```
+wt: codex cannot resume and open with a prompt at once, so this launch starts a fresh session; --new says so explicitly
+```
+
+The prompt wins because a prompt that reaches nobody is the worse failure —
+`codex` resumed without it sits at an empty one, which is exactly what happens
+to a prompt `--seed-exec` generated and nobody can retype.
 
 `--new` is also what to pass when you are driving the agent's own session
 flags: `wt claude --new telos/agent-sync -- --resume <id>` picks the session
@@ -460,6 +464,20 @@ the workspace name people put last.
 Running the setup step here rather than asking the agent to run it is the same
 argument as everywhere else in `wt`: a step described to an agent is a step it
 has to get right, and this one either worked or the launch stopped.
+
+Where the preparation is what *produces* the prompt — a tool that seeds a run
+and prints the instructions for it — `--seed-exec` replaces both `-x` and
+`--seed`. The command runs the same way, and what it prints on stdout opens the
+agent instead of scrolling past on the terminal:
+
+```sh
+wt codex triptych/proper-54 -b impl/proper-54-production -r spincyc/triptych \
+  --seed-exec ./tools/tpt proper 54-fourteenth-after-pentecost seed --provider codex
+```
+
+Only stdout is the prompt: a command that narrates its progress on stderr
+still reaches the terminal. A command that prints nothing stops the launch,
+since there is then no prompt to open with.
 
 `-b` (`--branch`) works on `wt new`, `wt clone` and a launch, and is recorded
 in the workspace's `.wt-workspace`, so a workspace can work on a branch it did

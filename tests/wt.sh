@@ -447,6 +447,41 @@ assert_contains "$prepared" 'tpt repo=spincyc/beta'
 assert_contains "$prepared" 'args=proper 54-fourteenth seed --provider claude'
 assert_agent_args "$prepared" 'after the setup'
 
+printf '# --seed-exec makes what the setup printed the opening prompt\n'
+# A tool that seeds a run and prints the instructions for it is the whole
+# reason: printed to the terminal they reach nobody who can act on them.
+for prepared_repo in alpha beta; do
+  cat >"$work/triptych/proper-54/spincyc/$prepared_repo/tools/tpt" <<'TPT'
+#!/bin/sh
+printf 'progress in %s\n' "$WT_REPO" >&2
+printf '{"stage": "seed", "repo": "%s"}\n' "$WT_REPO"
+TPT
+done
+seeded=$(wt_run claude --new triptych/proper-54 \
+  --seed-exec ./tools/tpt proper 54 seed --provider claude 2>&1)
+# stdout becomes the prompt; stderr still reaches the terminal.
+assert_contains "$seeded" 'progress in spincyc/alpha'
+# Captured, so these appear only in what the agent was handed, and every
+# clone's output is in it.
+assert_contains "$seeded" 'args={"stage": "seed", "repo": "spincyc/alpha"}'
+assert_contains "$seeded" '{"stage": "seed", "repo": "spincyc/beta"}'
+
+printf '# a launch takes one prompt and runs one command before the agent\n'
+if two_prompts=$(wt_run claude triptych/proper-54 --seed mine \
+  --seed-exec ./tools/tpt 2>&1); then
+  fail "a typed prompt and a printed one were accepted together"
+fi
+assert_contains "$two_prompts" 'would give the agent a second one'
+# A second -x cannot be a second command: it is inside the first one's
+# arguments, because the first took the rest of the line.
+assert_contains \
+  "$(wt_run claude --new triptych/proper-54 -x echo --seed-exec here 2>&1)" \
+  '--seed-exec here'
+if silent=$(wt_run claude --new triptych/proper-54 --seed-exec true 2>&1); then
+  fail "a setup command that printed nothing still opened an agent"
+fi
+assert_contains "$silent" 'printed nothing'
+
 printf '# a failing -x stops the launch instead of half-preparing it\n'
 if half=$(wt_run claude triptych/proper-54 -x sh -c 'exit 3' 2>&1); then
   fail "a failing setup command still started an agent"
@@ -783,16 +818,14 @@ printf '# --new forces a fresh session\n'
 assert_agent_args "$(wt_run claude --new telos/carry-on 2>/dev/null)" ''
 assert_agent_args "$(wt_run claude telos/carry-on 2>/dev/null)" '--continue'
 
-printf '# resuming and seeding together is refused where it cannot work\n'
-# codex reads a trailing prompt as the session to resume, so wt says so
-# rather than launching a session that resumes nothing.
-if refused=$(wt_run codex --seed 'the next brief' telos/carry-on 2>&1); then
-  fail "codex was resumed and seeded at once"
-fi
-assert_contains "$refused" 'cannot be given a seed prompt while resuming'
-assert_agent_args \
-  "$(wt_run codex --new --seed 'the next brief' telos/carry-on 2>/dev/null)" \
-  'the next brief'
+printf '# an agent that cannot resume with a prompt opens a fresh session\n'
+# codex reads a trailing prompt as the session to resume, so it cannot be
+# given both. A prompt that reaches nobody is the worse failure, so the
+# prompt wins and the session is fresh; refusing left a generated prompt
+# with nowhere to go and nobody able to retype it.
+codex_seeded=$(wt_run codex --seed 'the next brief' telos/carry-on 2>&1)
+assert_contains "$codex_seeded" 'starts a fresh session'
+assert_agent_args "$codex_seeded" 'the next brief'
 assert_agent_args \
   "$(wt_run claude --seed 'the next brief' telos/carry-on 2>/dev/null)" \
   '--continue the next brief'
@@ -970,7 +1003,7 @@ codex_next=$(publish_brief 009)
 codex_relay=$(wt_run codex relay/fresh -b feat/relay \
   --relay "spincyc/relayed@$codex_next" 2>&1) ||
   fail "the second codex relay turn failed: $codex_relay"
-assert_contains "$codex_relay" 'opens a fresh session'
+assert_contains "$codex_relay" 'starts a fresh session'
 if printf '%s\n' "$codex_relay" | grep -Fq 'args=resume --last'; then
   fail "codex was resumed with a prompt it reads as a session id"
 fi

@@ -46,6 +46,8 @@ Launch:
   -x, --exec <command>...         Run this in every repo before the agent,
                                   as wt exec does; takes the rest of the
                                   line, so it goes last
+  --seed-exec <command>...        The same, but what it prints is the prompt
+                                  the agent opens with
   --seed <text>                   Open the agent with this prompt, given to
                                   it as its trailing prompt argument
   --seed-file <path>              The same prompt read from a file, or from
@@ -60,11 +62,11 @@ These are wt's own and may be typed either side of the workspace; -- ends them
 and hands everything after it to the agent untouched. A launch continues the
 session the named agent last had in that workspace, when wt recorded one and
 the agent has a spelling for it; claude, codex and droid do, anything else is
-always fresh. Only claude can be resumed and seeded at once, since codex and
-droid both read a trailing prompt as the session to resume; a --seed asking
-for both is refused, and a --relay turn opens a fresh session instead, since
-its prompt is derived rather than typed. Use --new when driving the agent's
-own session flags yourself.
+always fresh. Only claude can be resumed and opened with a prompt at once,
+since codex and droid both read a trailing prompt as the session to resume;
+asking for both under either of those starts a fresh session and says so,
+because a prompt that reaches nobody is the worse failure. Use --new when
+driving the agent's own session flags yourself.
 
 --relay is what a relay-v6 launch handoff invokes. It needs -b and derives
 everything else from the brief's front matter at the pinned commit. It then
@@ -79,6 +81,11 @@ work needs onto it, -x prepares it, and --seed says what to do there, so a new
 line of work costs one command rather than new, clone, exec and launch in
 sequence. A failing -x stops the launch: nothing starts on a workspace that
 was only half prepared.
+
+Where the preparation is what produces the prompt -- a tool that seeds a run
+and prints the instructions for it -- --seed-exec replaces both -x and --seed:
+the command runs the same way and what it prints on stdout opens the agent,
+rather than scrolling past on the terminal.
 
 A workspace is a leaf named <project>/<slug>[/<child>...]. Intermediate
 components group a stack of workspaces. Every repository in a leaf works on
@@ -439,7 +446,9 @@ def _fan_out(
             sys.stdout.flush()
             sys.stderr.flush()
             try:
-                code = _run_in(workspace.path / name, [program, *args], name)
+                code, _ = _run_in(
+                    workspace.path / name, [program, *args], name
+                )
             except WtError as error:
                 # A relative program resolves per repository, so one clone
                 # lacking it must not abandon the clones after it.
@@ -452,15 +461,56 @@ def _fan_out(
     return status
 
 
-def _run_in(repo: Path, command: list[str], name: str) -> int:
-    """Run a command in one clone, telling it which clone it is in."""
+def _run_in(
+    repo: Path, command: list[str], name: str, capture: bool = False
+) -> tuple[int, str]:
+    """Run a command in one clone, telling it which clone it is in.
+
+    Captured, its stdout comes back instead of reaching the terminal;
+    stderr goes to the terminal either way, so a command that explains
+    itself while it works still can.
+    """
     environment = {**os.environ, "WT_REPO": name, "WT_REPO_DIR": str(repo)}
     try:
-        return subprocess.run(
-            command, cwd=repo, env=environment, check=False
-        ).returncode
+        result = subprocess.run(
+            command,
+            cwd=repo,
+            env=environment,
+            check=False,
+            text=capture,
+            stdout=subprocess.PIPE if capture else None,
+        )
     except OSError as error:
         raise WtError(f"cannot run {command[0]} in {name}: {error}") from error
+    return result.returncode, result.stdout or "" if capture else ""
+
+
+def _fan_out_output(
+    workspace: workspaces.Workspace, args: list[str], program: str
+) -> str:
+    """Run a command in every clone and return what it printed.
+
+    A setup step that generates the agent's opening prompt has to have its
+    stdout read rather than shown: the prompt is the product, and a prompt
+    printed to the terminal reaches nobody who can act on it.
+    """
+    names = workspace.repo_names()
+    if not names:
+        raise WtError(f"no repositories in {workspace.path}")
+    collected: list[str] = []
+    for name in names:
+        _narrate(f"== {name}")
+        code, output = _run_in(
+            workspace.path / name, [program, *args], name, capture=True
+        )
+        if code != 0:
+            raise WtError(
+                f"the --seed-exec command failed in {name}, so no agent "
+                f"was started"
+            )
+        if output.strip():
+            collected.append(output.strip())
+    return "\n\n".join(collected)
 
 
 def cmd_git(config: Config, args: list[str]) -> int:
@@ -950,6 +1000,7 @@ SEED_OPTIONS = ("--seed", "--seed-file")
 BRANCH_OPTIONS = ("-b", "--branch")
 CLONE_OPTIONS = ("-r", "--clone")
 EXEC_OPTIONS = ("-x", "--exec")
+SEED_EXEC_OPTION = "--seed-exec"
 RELAY_OPTION = "--relay"
 NEW_OPTION = "--new"
 LAUNCH_OPTIONS = (
@@ -957,6 +1008,7 @@ LAUNCH_OPTIONS = (
     *BRANCH_OPTIONS,
     *CLONE_OPTIONS,
     *EXEC_OPTIONS,
+    SEED_EXEC_OPTION,
     RELAY_OPTION,
     NEW_OPTION,
 )
@@ -985,8 +1037,10 @@ class LaunchOptions:
     seed: str | None = None
     branch: str | None = None
     clones: tuple[clone.CloneSpec, ...] = ()
-    # Everything after -x, which is a command and not wt's to read further.
+    # Everything after -x or --seed-exec, which is a command and not wt's
+    # to read further; the flag says which of the two it was.
     setup: tuple[str, ...] = ()
+    setup_is_seed: bool = False
     relay: str | None = None
     fresh: bool = False
 
@@ -1006,6 +1060,7 @@ def _take_launch_options(
     branch: str | None = None
     clones: list[clone.CloneSpec] = []
     setup: list[str] = []
+    setup_is_seed = False
     relay: str | None = None
     fresh = False
     kept: list[str] = []
@@ -1016,16 +1071,19 @@ def _take_launch_options(
             kept.extend(rest)
             break
         name, assigned, inline = head.partition("=")
-        if name in EXEC_OPTIONS:
+        if name in EXEC_OPTIONS or name == SEED_EXEC_OPTION:
             # Terminal, because a command is a list and there is no second
-            # separator to end one with: everything after -x belongs to it,
-            # so wt's own options and the agent's go before.
+            # separator to end one with: everything after it belongs to the
+            # command, so wt's own options and the agent's go before. That
+            # is also why there is no "two commands" refusal to write — a
+            # second one is inside the first one's arguments.
             if assigned or not rest:
                 raise UsageError(
                     f"{name} takes the command to run, as the rest of the "
                     f"line"
                 )
             setup = rest
+            setup_is_seed = name == SEED_EXEC_OPTION
             rest = []
             continue
         if name not in LAUNCH_OPTIONS:
@@ -1078,7 +1136,17 @@ def _take_launch_options(
         text = text.strip()
         if not text:
             raise UsageError(f"{source} gave an empty seed prompt")
+    if setup_is_seed and text is not None:
+        raise UsageError(
+            f"{SEED_EXEC_OPTION} prints the prompt to open with; {source} "
+            f"would give the agent a second one"
+        )
     if relay is not None:
+        if setup_is_seed:
+            raise UsageError(
+                f"{RELAY_OPTION} derives the prompt from the brief it names; "
+                f"{SEED_EXEC_OPTION} would give the executor a second one"
+            )
         if text is not None:
             raise UsageError(
                 f"{RELAY_OPTION} derives the prompt from the brief it names; "
@@ -1093,6 +1161,7 @@ def _take_launch_options(
         branch=branch,
         clones=tuple(clones),
         setup=tuple(setup),
+        setup_is_seed=setup_is_seed,
         relay=relay,
         fresh=fresh,
     ), kept
@@ -1291,14 +1360,24 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
         # agent instead is a step it has to get right; run here it either
         # worked or the launch stops, and nothing starts on a half-prepared
         # workspace.
-        code = _fan_out(
-            workspace, list(options.setup[1:]), program=options.setup[0]
-        )
-        if code != 0:
-            raise WtError(
-                f"the -x command failed, so {agent} was not started in "
-                f"{workspace.name}"
+        if options.setup_is_seed:
+            seed = _fan_out_output(
+                workspace, list(options.setup[1:]), options.setup[0]
             )
+            if not seed:
+                raise WtError(
+                    f"{options.setup[0]} printed nothing, so there is no "
+                    f"prompt to open {agent} with"
+                )
+        else:
+            code = _fan_out(
+                workspace, list(options.setup[1:]), program=options.setup[0]
+            )
+            if code != 0:
+                raise WtError(
+                    f"the -x command failed, so {agent} was not started in "
+                    f"{workspace.name}"
+                )
 
     turn = None
     if options.relay is not None:
@@ -1317,22 +1396,14 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
         workspace.path, agent
     )
     if resuming and seed is not None and not sessions.carries_prompt(agent):
-        if turn is None:
-            raise UsageError(
-                f"{agent} cannot be given a seed prompt while resuming its "
-                f"previous session in {workspace.name}; use --new for a "
-                f"fresh session, or drop the seed"
-            )
-        # A relay turn has no such choice to offer: the prompt is derived,
-        # not typed, and refusing would leave the run with no way to take
-        # its next turn under this agent. Every brief is self-sufficient at
-        # its pinned commit, which is exactly why the protocol calls
-        # `state: resume` a cost hint and not a requirement — so a fresh
-        # session is correct here, and the cost is saying so.
+        # A prompt that reaches nobody is the worse failure. Refusing the
+        # combination used to look like the careful answer, but the launch
+        # was asked to open the agent on this prompt, and an agent resumed
+        # without it sits at an empty one — which is what happens to a
+        # generated prompt nobody typed and nobody can retype.
         print(
-            f"wt: {agent} cannot resume and be given this turn's brief at "
-            f"once, so this turn opens a fresh session; the brief is "
-            f"self-sufficient at its pinned commit",
+            f"wt: {agent} cannot resume and open with a prompt at once, so "
+            f"this launch starts a fresh session; --new says so explicitly",
             file=sys.stderr,
         )
         resuming = False
