@@ -55,6 +55,10 @@ documents. Each brief states:
 - What to return when blocked: the concrete obstacle, the evidence, and any
   partial result — never silence, and never improvisation outside the
   boundary.
+- The candor of `30-collaboration.md`, applied to the lane's own result:
+  report a weak, uncertain, or partly failed outcome as one. Finishing a
+  lane is not the same as succeeding at it, and a favorable summary costs
+  the coordinator the evidence its review depends on.
 
 ## Nested delegation
 
