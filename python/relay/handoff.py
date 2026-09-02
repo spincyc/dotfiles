@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 
 from . import PROTOCOL_URL, PROTOCOL_VERSION, gitcmd, turnfile
-from .errors import RelayError
+from .errors import Blocked, RelayError
 
 # Every generated token in a launch handoff is held to this, so that no
 # shell metacharacter can appear in a conforming line. The launcher checks
@@ -97,15 +97,22 @@ class Brief:
         return f".agent/runs/{self.run}/{self.claim}-result.md"
 
 
-def find_brief(paths: list[str]) -> str:
+def find_brief(paths: list[str]) -> re.Match[str]:
     """The one brief a commit published, among the paths it touched.
 
     A brief is committed on its own, so exactly one match is the normal
     case. Zero means the pinned commit is not a brief commit; more than one
     means the planner broke the single-writer rule, and guessing which of
     them was meant would start the executor on the wrong turn.
+
+    The match comes back rather than the path, so the caller reads the run
+    and turn the filename carries without matching it a second time.
     """
-    briefs = [path for path in paths if BRIEF_PATH.match(path)]
+    briefs = [
+        matched
+        for matched in (BRIEF_PATH.match(path) for path in paths)
+        if matched is not None
+    ]
     if not briefs:
         raise RelayError(
             "the pinned commit publishes no brief; a launch handoff names "
@@ -114,7 +121,7 @@ def find_brief(paths: list[str]) -> str:
     if len(briefs) > 1:
         raise RelayError(
             "the pinned commit publishes more than one brief: "
-            + " ".join(sorted(briefs))
+            + " ".join(sorted(matched.string for matched in briefs))
         )
     return briefs[0]
 
@@ -133,7 +140,8 @@ def read_brief(repo: Path, sha: str) -> Brief:
     paths = [
         line.strip() for line in (listed or "").splitlines() if line.strip()
     ]
-    path = find_brief(paths)
+    matched = find_brief(paths)
+    path = matched.string
     text = gitcmd.value(repo, "show", f"{sha}:{path}")
     if text is None:
         raise RelayError(f"cannot read {path} at {sha}")
@@ -152,13 +160,16 @@ def read_brief(repo: Path, sha: str) -> Brief:
             f"{path} names no " + ", ".join(missing) + " in its front matter"
         )
     if found["protocol"] != PROTOCOL_VERSION:
-        raise RelayError(
+        # The same stop, and the same token, that `relay --protocol` gives
+        # for the same disagreement. It is not one the blocked channel
+        # names, so it is reported here rather than carried to a planner
+        # whose table cannot explain it.
+        raise Blocked(
+            "protocol-mismatch",
             f"the run asks for {found['protocol']} and this build implements "
             f"{PROTOCOL_VERSION}; two parties on different rule sets must "
-            f"not proceed"
+            f"not proceed",
         )
-    matched = BRIEF_PATH.match(path)
-    assert matched is not None  # find_brief only returns matching paths
     if found["run"] != matched.group("run"):
         raise RelayError(
             f"{path} says it belongs to run {found['run']}, and its path "
@@ -182,7 +193,35 @@ def read_brief(repo: Path, sha: str) -> Brief:
     )
 
 
-def publish_commands(brief: Brief, pointer: Pointer, tool: bool) -> str:
+BASE_PLACEHOLDER = "<the base= that prepare printed>"
+
+
+def result_front_matter(brief: Brief, agent: str) -> str:
+    """The result's front matter, with every value the turn already knows.
+
+    Only `base` is missing, because only the sync that precedes the result
+    can say what it is. Everything else was settled when the turn was
+    claimed, so an executor deriving it again is an executor with something
+    to get wrong — and a turn file is permanent history, immutable once it
+    reaches origin, so getting it wrong is not correctable in place.
+    """
+    return turnfile.render(
+        [
+            ("protocol", brief.protocol),
+            ("run", brief.run),
+            ("turn", brief.claim),
+            ("role", "executor"),
+            ("agent", agent),
+            ("branch", brief.branch),
+            ("base", BASE_PLACEHOLDER),
+            ("answers", brief.path),
+        ]
+    )
+
+
+def publish_commands(
+    brief: Brief, pointer: Pointer, agent: str, tool: bool
+) -> str:
     """The exact way this turn is published, with every value filled in.
 
     Two commands and the file between them. `relay prepare` must run after
@@ -206,9 +245,16 @@ def publish_commands(brief: Brief, pointer: Pointer, tool: bool) -> str:
         f"--branch {brief.branch} \\\n"
         f"      --brief {pointer.sha} --brief-path {brief.path}\n"
         f"\n"
-        f"Write {brief.result_path} from relay/templates/result.md in the "
-        f"repository publishing this protocol, recording the base= and "
-        f"work= values prepare printed. Then:\n"
+        f"Write {brief.result_path} opening with exactly this front matter, "
+        f"the one placeholder taken from what prepare printed:\n"
+        f"\n"
+        f"{result_front_matter(brief, agent)}"
+        f"\n"
+        f"Then the body, in the order the protocol's Turn file format "
+        f"section gives for a result: status:, work: (from prepare's "
+        f"work=), needs: unless complete, files touched grouped by intent, "
+        f"each check run and its outcome, decisions and deviations, open "
+        f"questions. Never report a check you did not run. Then:\n"
         f"\n"
         f"  relay publish --protocol {brief.protocol} "
         f"--branch {brief.branch} \\\n"
@@ -217,7 +263,11 @@ def publish_commands(brief: Brief, pointer: Pointer, tool: bool) -> str:
 
 
 def prompt(
-    brief: Brief, pointer: Pointer, clone: str, tool: bool = True
+    brief: Brief,
+    pointer: Pointer,
+    clone: str,
+    agent: str = "unknown",
+    tool: bool = True,
 ) -> str:
     """What to open the executor with, for the brief at that commit.
 
@@ -243,7 +293,7 @@ def prompt(
         f"Execute it. When the work is committed, publish the turn with "
         f"exactly this and nothing improvised:\n"
         f"\n"
-        f"{publish_commands(brief, pointer, tool)}\n"
+        f"{publish_commands(brief, pointer, agent, tool)}\n"
         f"\n"
         f"If you are blocked, print `relay blocked {brief.run} "
         f"{brief.claim} <token>` with the protocol's token for the "

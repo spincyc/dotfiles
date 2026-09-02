@@ -295,7 +295,11 @@ Only `claude` can be resumed and seeded at once. `codex resume` reads its first
 positional as a session id and droid's `--resume` takes an optional session id,
 so in both a seed prompt would be read as a session to resume; `wt` refuses
 that combination and names `--new` rather than launching something that
-resumes nothing.
+resumes nothing. A `--relay` turn is the exception: its prompt is derived
+rather than typed, so there is no combination for you to resolve and it opens
+a fresh session, saying so. Every brief is self-sufficient at its pinned
+commit, which is why the protocol calls `state: resume` a cost hint rather
+than a requirement.
 
 `--new` is also what to pass when you are driving the agent's own session
 flags: `wt claude --new telos/agent-sync -- --resume <id>` picks the session
@@ -331,6 +335,12 @@ published. Do not repeat any of it…
       --brief <sha> --brief-path .agent/runs/2026-09-02-01/001-brief.md
 ```
 
+The result's front matter is given the same way — every field but `base` is
+settled the moment the turn is claimed, so the agent is handed them rather
+than left to derive them into a file that becomes immutable the moment it
+reaches `origin`. Only the body, which is judgement, is left to the protocol's
+own section.
+
 That is the point of the form. A step described in prose is a step the agent
 reconstructs, and a reconstructed step is where a run improvises; the brief is
 the only thing left for it to read, and `wt` never summarises that.
@@ -363,7 +373,13 @@ done 2026-09-02-01 002
 The acknowledgement still asserts only that the session ended — the planner
 reads the result file itself and never infers an outcome. Saying whether the
 file is there is for you, so you know before the planner asks whether to
-expect a `relay blocked …` line instead.
+expect a `relay blocked …` line instead. An unreachable `origin` is reported
+as its own answer rather than as an absence, since a fetch that failed never
+looked.
+
+Ctrl-C belongs to the agent throughout: it reaches the whole foreground group,
+the agent decides what it means, and `wt` simply waits again so it is still
+there to make the report.
 
 The next turn is the same command with the next brief's sha. It resumes the
 session already holding the run rather than opening a second one, which is

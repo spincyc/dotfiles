@@ -82,8 +82,12 @@ def read_marker(path: Path) -> str | None:
             raise WtError(f"unrecognised wt marker: {path}")
         branch = value.strip()
         # Cheaply, because this is read on every question about the
-        # workspace; the full reference rules are asked once, on the way in.
-        if not branch or branch.split() != [branch]:
+        # workspace; the full reference rules are asked once, on the way
+        # in. The leading dash is not style: this string is handed to git
+        # as a branch, and one beginning with `-` arrives there as an
+        # option instead. A marker `wt` wrote cannot contain one, and a
+        # marker it did not write is exactly what this is guarding.
+        if not branch or branch.split() != [branch] or branch.startswith("-"):
             raise WtError(f"wt marker names an unusable branch: {path}")
     return branch
 

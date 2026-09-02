@@ -34,6 +34,9 @@ cleanup() {
   kill "${first_agent:-}" "${second_agent:-}" 2>/dev/null || true
   case "$test_root" in
     "${TMPDIR:-/tmp}"/dotfiles-wt-test.*)
+      # A failure takes its evidence with it: the tree the check ran
+      # against is deleted before anyone can look at it. WT_TEST_KEEP=1
+      # keeps it and says where, for the one run you are debugging.
       if [ -n "${WT_TEST_KEEP:-}" ]; then
         printf 'kept %s\n' "$test_root" >&2
       else
@@ -565,6 +568,14 @@ printf 'wt-workspace-v1\nbranch:\n' >"$work/telos/demo/.wt-workspace"
 if wt_run check >/dev/null 2>&1; then
   fail "check accepted a marker naming no branch"
 fi
+# A branch beginning with a dash reaches git as an option, not a branch, so
+# a marker wt did not write must not be able to smuggle one in.
+printf 'wt-workspace-v1\nbranch: --upload-pack=touch\n' \
+  >"$work/telos/demo/.wt-workspace"
+if dash_marker=$(wt_run branch telos/demo 2>&1); then
+  fail "a marker naming an option-shaped branch was accepted"
+fi
+assert_contains "$dash_marker" 'unusable branch'
 printf 'wt-workspace-v1\n' >"$work/telos/demo/.wt-workspace"
 
 printf '# check warns about a repository off the workspace branch\n'
@@ -764,6 +775,18 @@ git -C "$relay_seed" commit --quiet -m 'brief 001'
 git -C "$relay_seed" push --quiet -u origin feat/relay
 relay_sha=$(git -C "$relay_seed" rev-parse HEAD)
 
+# The planner's next brief, published the way a planner would.
+publish_brief() {
+  git -C "$relay_seed" pull --quiet --ff-only
+  sed "s/^turn: 001$/turn: $1/" \
+    "$relay_seed/.agent/runs/2026-09-02-01/001-brief.md" \
+    >"$relay_seed/.agent/runs/2026-09-02-01/$1-brief.md"
+  git -C "$relay_seed" add .agent
+  git -C "$relay_seed" commit --quiet -m "brief $1"
+  git -C "$relay_seed" push --quiet origin feat/relay
+  git -C "$relay_seed" rev-parse HEAD
+}
+
 relay_out=$(wt_run claude relay/2026-09-02-01 -b feat/relay \
   --relay "spincyc/relayed@$relay_sha" 2>&1)
 assert_contains "$relay_out" "$relay_version run 2026-09-02-01, brief 001"
@@ -849,14 +872,7 @@ wt_run rm -f relay/plain >/dev/null 2>&1
 printf '# wt agents names the run and turn a relay worker is on\n'
 # The next turn of the same run: turn 002 is claimed, so this needs its own
 # brief, exactly as the planner would publish one.
-git -C "$relay_seed" pull --quiet --ff-only
-sed 's/^turn: 001$/turn: 003/' \
-  "$relay_seed/.agent/runs/2026-09-02-01/001-brief.md" \
-  >"$relay_seed/.agent/runs/2026-09-02-01/003-brief.md"
-git -C "$relay_seed" add .agent
-git -C "$relay_seed" commit --quiet -m 'brief 003'
-git -C "$relay_seed" push --quiet origin feat/relay
-relay_next=$(git -C "$relay_seed" rev-parse HEAD)
+relay_next=$(publish_brief 003)
 rm -f -- "$test_root/slow-release" "$test_root"/slow-started-*
 wt_agent=slow-agent wt_run relay/2026-09-02-01 -b feat/relay \
   --relay "spincyc/relayed@$relay_next" >"$test_root/relay-next.log" 2>&1 &
@@ -875,6 +891,48 @@ wait "$relay_agent" 2>/dev/null || true
 rm -f -- "$test_root/slow-release" "$test_root"/slow-started-*
 wait_for 'wt_run agents | grep -Fq "no agents running"'
 wt_run rm -f relay/2026-09-02-01 >/dev/null 2>&1
+
+printf '# a relay turn an agent cannot resume and seed opens fresh\n'
+# Typed together, --seed and a resume are a choice for the user to resolve.
+# Derived by --relay there is no choice to offer, and every brief is
+# self-sufficient at its pinned commit, so refusing would only strand the
+# run. codex cannot carry a prompt into a resumed session, so it says so
+# and starts one.
+codex_first=$(publish_brief 007)
+wt_run codex relay/fresh -b feat/relay --relay "spincyc/relayed@$codex_first" \
+  >/dev/null 2>&1 || fail "the first codex relay turn failed"
+codex_next=$(publish_brief 009)
+codex_relay=$(wt_run codex relay/fresh -b feat/relay \
+  --relay "spincyc/relayed@$codex_next" 2>&1) ||
+  fail "the second codex relay turn failed: $codex_relay"
+assert_contains "$codex_relay" 'opens a fresh session'
+if printf '%s\n' "$codex_relay" | grep -Fq 'args=resume --last'; then
+  fail "codex was resumed with a prompt it reads as a session id"
+fi
+wt_run rm -f relay/fresh >/dev/null 2>&1
+
+printf '# a relay session keeps the SIGINT the key is meant to reach\n'
+# wt waits for the agent instead of becoming it, and a wt that ignored
+# SIGINT would hand the agent SIG_IGN across the exec, since SIG_IGN
+# survives one: the key would then do nothing at all in the very session
+# it is meant to interrupt.
+cat >"$fake_bin/signal-agent" <<EOF
+#!/usr/bin/env python3
+import pathlib
+import signal
+
+pathlib.Path("$test_root/relay-sigint").write_text(
+    "ignored"
+    if signal.getsignal(signal.SIGINT) is signal.SIG_IGN
+    else "reaches the agent"
+)
+EOF
+chmod 755 -- "$fake_bin/signal-agent"
+wt_agent=signal-agent wt_run relay/signals -b feat/relay \
+  --relay "spincyc/relayed@$(publish_brief 011)" >/dev/null 2>&1
+[ "$(cat "$test_root/relay-sigint")" = "reaches the agent" ] ||
+  fail "the relay agent inherited an ignored SIGINT"
+wt_run rm -f relay/signals >/dev/null 2>&1
 
 printf '# launching creates the workspace, a near-miss name included\n'
 # A slug one character from an existing one used to be refused as a typo,

@@ -894,9 +894,13 @@ class HandoffTests(WithOrigin):
 
     def test_a_brief_on_another_version_stops_the_launch(self) -> None:
         sha = self.publish_brief(self.valid_brief(protocol="relay-v0"))
-        with self.assertRaises(RelayError) as raised:
+        with self.assertRaises(Blocked) as raised:
             handoff.read_brief(self.work, sha)
         self.assertIn("relay-v0", str(raised.exception))
+        # The same token `relay --protocol` gives, and like it not one the
+        # blocked channel names, so it is never carried to a planner.
+        self.assertEqual(raised.exception.token, "protocol-mismatch")
+        self.assertFalse(raised.exception.relayed)
 
     def test_front_matter_and_path_must_agree_about_the_run(self) -> None:
         sha = self.publish_brief(self.valid_brief(run="2026-01-01-09"))
@@ -924,6 +928,27 @@ class HandoffTests(WithOrigin):
         self.assertIn(f"relay publish --protocol {PROTOCOL_VERSION}", text)
         self.assertIn(f"--result {brief.result_path}", text)
         self.assertIn(f"relay blocked {RUN} 002 <token>", text)
+
+    def test_the_result_front_matter_is_given_not_looked_up(self) -> None:
+        # It used to name a template in another repository, which an
+        # executor working somewhere else does not have. Every value but
+        # base is settled when the turn is claimed.
+        sha = self.publish_brief(self.valid_brief())
+        brief = handoff.read_brief(self.work, sha)
+        pointer = handoff.parse_pointer(f"spincyc/dotfiles@{sha}")
+        text = handoff.prompt(brief, pointer, "clone", agent="claude")
+        self.assertNotIn("templates/result.md", text)
+        for line in (
+            f"protocol: {PROTOCOL_VERSION}",
+            f"run: {RUN}",
+            "turn: 002",
+            "role: executor",
+            "agent: claude",
+            f"branch: {BRANCH}",
+            f"base: {handoff.BASE_PLACEHOLDER}",
+            f"answers: {brief_path()}",
+        ):
+            self.assertIn(line, text)
 
     def test_without_the_tool_the_prompt_names_the_sections(self) -> None:
         # Its absence is not a blocker, and naming the sections beats

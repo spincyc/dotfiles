@@ -55,8 +55,10 @@ and hands everything after it to the agent untouched. A launch continues the
 session the named agent last had in that workspace, when wt recorded one and
 the agent has a spelling for it; claude, codex and droid do, anything else is
 always fresh. Only claude can be resumed and seeded at once, since codex and
-droid both read a trailing prompt as the session to resume. Use --new when
-driving the agent's own session flags yourself.
+droid both read a trailing prompt as the session to resume; a --seed asking
+for both is refused, and a --relay turn opens a fresh session instead, since
+its prompt is derived rather than typed. Use --new when driving the agent's
+own session flags yourself.
 
 --relay is what a relay-v6 launch handoff invokes. It needs -b and derives
 everything else from the brief's front matter at the pinned commit. It then
@@ -1161,6 +1163,7 @@ def open_relay_turn(
             brief,
             pointer,
             str(relative),
+            agent=agent,
             tool=shutil.which("relay") is not None,
         ),
     )
@@ -1211,11 +1214,25 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
         workspace.path, agent
     )
     if resuming and seed is not None and not sessions.carries_prompt(agent):
-        raise UsageError(
-            f"{agent} cannot be given a seed prompt while resuming its "
-            f"previous session in {workspace.name}; use --new for a fresh "
-            f"session, or drop the seed"
+        if turn is None:
+            raise UsageError(
+                f"{agent} cannot be given a seed prompt while resuming its "
+                f"previous session in {workspace.name}; use --new for a "
+                f"fresh session, or drop the seed"
+            )
+        # A relay turn has no such choice to offer: the prompt is derived,
+        # not typed, and refusing would leave the run with no way to take
+        # its next turn under this agent. Every brief is self-sufficient at
+        # its pinned commit, which is exactly why the protocol calls
+        # `state: resume` a cost hint and not a requirement — so a fresh
+        # session is correct here, and the cost is saying so.
+        print(
+            f"wt: {agent} cannot resume and be given this turn's brief at "
+            f"once, so this turn opens a fresh session; the brief is "
+            f"self-sufficient at its pinned commit",
+            file=sys.stderr,
         )
+        resuming = False
     # Recorded before the exec, because after it there is no wt left to
     # record anything. A launch that dies immediately still counts: the
     # agent may well have written a session before it did.
@@ -1269,34 +1286,47 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
 
 
 def _run_agent(command: list[str]) -> int:
-    """Run the agent to completion, leaving the terminal to it.
+    """Run the agent to completion, leaving the terminal and the keys to it.
 
-    SIGINT is ignored here for the same reason a shell ignores it while a
-    foreground job runs: the key reaches the whole process group, and the
-    agent is the one that should act on it. Without this, Ctrl-C would kill
-    `wt` first and lose the report it exists to make.
+    Ctrl-C reaches the whole foreground process group, so the agent has it
+    too and decides what it means — for most of them, cancel this turn
+    rather than end the session. `wt` only has to still be here when the
+    session does end, so it waits again instead of abandoning the report.
+
+    Ignoring SIGINT in this process would be worse than useless. SIG_IGN
+    survives the exec, so the agent would inherit it and never see the key
+    at all; and `subprocess.run` kills the child when a KeyboardInterrupt
+    reaches it, which is exactly the session the report is waiting for.
     """
-    import signal
+    process = subprocess.Popen(command)
+    while True:
+        try:
+            return process.wait()
+        except KeyboardInterrupt:
+            continue
 
-    previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
-    try:
-        return subprocess.run(command, check=False).returncode
-    finally:
-        signal.signal(signal.SIGINT, previous)
 
+def _result_state(turn: RelayTurn) -> str:
+    """Whether this turn's result reached origin: yes, no, or unknown.
 
-def _published(turn: RelayTurn) -> bool:
-    """Whether this turn's result actually reached origin.
-
-    Asked rather than assumed. The protocol has the planner read the result
-    file itself and never infer an outcome from silence, so this decides
-    only what to tell the user to expect — but "no result was published" is
-    a fact worth having before the planner asks for it.
+    Asked rather than assumed, and a fetch that failed is its own answer:
+    reading it as "nothing was published" would report an absence this
+    never actually looked for. The protocol has the planner read the result
+    file itself and never infer an outcome, so this only decides what to
+    tell the user to expect.
     """
-    gitcmd.read(turn.checkout, "fetch", "origin")
+    if gitcmd.read(turn.checkout, "fetch", "origin")[0] != 0:
+        return "unknown"
     reference = f"origin/{turn.brief.branch}:{turn.brief.result_path}"
     status, _ = gitcmd.read(turn.checkout, "cat-file", "-e", reference)
-    return status == 0
+    return "yes" if status == 0 else "no"
+
+
+_RESULT_WORDING = {
+    "yes": "is at origin",
+    "no": "is NOT at origin",
+    "unknown": "could not be checked, because origin is unreachable",
+}
 
 
 def _report_turn(turn: RelayTurn | None) -> None:
@@ -1309,21 +1339,20 @@ def _report_turn(turn: RelayTurn | None) -> None:
     if turn is None:
         return
     brief = turn.brief
-    landed = _published(turn)
+    landed = _result_state(turn)
     # Interleaved on purpose, so the lines read in order on a terminal: our
     # stderr is unbuffered and our stdout is not, and the acknowledgement
     # would otherwise arrive after the sentence about it.
     print(
         f"\nwt: the {brief.protocol} session for run {brief.run} has ended, "
-        f"and {brief.result_path} "
-        + ("is at origin. " if landed else "is NOT at origin. ")
-        + "Tell the planner:",
+        f"and {brief.result_path} {_RESULT_WORDING[landed]}. "
+        f"Tell the planner:",
         file=sys.stderr,
     )
     sys.stderr.flush()
     print(f"done {brief.run} {brief.claim}")
     sys.stdout.flush()
-    if not landed:
+    if landed == "no":
         print(
             "wt: the turn published nothing, so the planner will ask for "
             "the executor's `relay blocked ...` line; relay that verbatim "
