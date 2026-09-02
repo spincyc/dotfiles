@@ -25,8 +25,8 @@ from .errors import (
 )
 
 USAGE = """\
-Usage: wt [claude|codex|droid] [--new] [-b <branch>] [--seed[-file] <x>]
-          [<project>/]<slug>[/<child>...] [agent-args...]
+Usage: wt [claude|codex|droid] [--new] [-b <branch>] [-r <repo>]...
+          [--seed[-file] <x>] [<project>/]<slug>[/<child>...] [agent-args...]
        wt <verb> [<workspace>] [args...]
 
 Launch:
@@ -40,6 +40,8 @@ Launch:
                                   resumes the one this agent had here
   -b, --branch <branch>           Work on this branch instead of the derived
                                   one; recorded when the workspace is created
+  -r, --clone <repo>              Clone owner/repo, a URL, or a local path
+                                  into the workspace first; repeatable
   --seed <text>                   Open the agent with this prompt, given to
                                   it as its trailing prompt argument
   --seed-file <path>              The same prompt read from a file, or from
@@ -68,6 +70,10 @@ blocked-channel line and exits 3 before any session opens. It waits for the
 agent rather than becoming it, so that when the session ends it can say
 whether the result reached origin and print what the run owes its planner.
 
+One launch does the whole opening: -b names the branch, -r clones what the
+work needs onto it, and --seed says what to do there, so a new line of work
+costs one command rather than new, clone and launch in sequence.
+
 A workspace is a leaf named <project>/<slug>[/<child>...]. Intermediate
 components group a stack of workspaces. Every repository in a leaf works on
 feature/<slug>[/<child>...] ($WT_BRANCH_PREFIX plus the complete slug stack),
@@ -80,7 +86,7 @@ Verbs:
   ls [-q]                         List workspaces and the repos they hold;
                                   -q prints bare names, one per line
   new [--force] [-b <branch>]     Create a workspace, do not launch an agent
-      [<workspace>]
+      [-r <repo>]... [<ws>]
   path [<workspace>]              Print a workspace directory
   pwd                             Print the root of the workspace you are in
   clone [-w <ws>] [-o <owner>]    Clone owner/repo, a URL, or a local path to
@@ -255,6 +261,7 @@ def cmd_ls(config: Config, args: list[str]) -> int:
 def cmd_new(config: Config, args: list[str]) -> int:
     force, args = _take_force(args)
     pin, args = _take_option(args, "-b", "--branch", what="branch")
+    specs, args = _take_clones(args)
     if args:
         workspace = workspaces.reuse_or_named(
             config, args[0], abbreviate=False
@@ -271,6 +278,7 @@ def cmd_new(config: Config, args: list[str]) -> int:
             f"created  {workspace.path}  branch {workspace.branch}",
             file=sys.stderr,
         )
+    _clone_specs(workspace, specs)
     print(workspace.path)
     return 0
 
@@ -300,6 +308,26 @@ def cmd_branch(config: Config, args: list[str]) -> int:
     return 0
 
 
+def _clone_specs(
+    workspace: workspaces.Workspace, specs: list[clone.CloneSpec]
+) -> None:
+    """Put each repository in the workspace, saying which were new.
+
+    On stderr, because a launch has already said what it created there and
+    a caller reading `wt new`'s stdout wants the path and nothing else.
+    """
+    for spec in specs:
+        if clone.into(
+            workspace.path, spec, workspace.config.forge, workspace.branch
+        ):
+            print(
+                f"cloned   {spec.name}  on {workspace.branch}",
+                file=sys.stderr,
+            )
+        else:
+            print(f"ok       {spec.name}", file=sys.stderr)
+
+
 def cmd_clone(config: Config, args: list[str]) -> int:
     named, args = _take_option(args, "-w", "--workspace")
     owner, args = _take_option(args, "-o", "--owner", what="owner")
@@ -326,6 +354,27 @@ def cmd_clone(config: Config, args: list[str]) -> int:
         else:
             print(f"ok       {spec.name}")
     return 0
+
+
+def _take_clones(
+    args: list[str],
+) -> tuple[list[clone.CloneSpec], list[str]]:
+    """Read every `--clone <spec>` from the arguments, in the order typed.
+
+    Parsed here rather than at the point of use so a name the workspace
+    cannot hold is refused before anything is created: a spec that fails
+    halfway through leaves a workspace and some of its clones, and the
+    cheap half of that is knowing sooner.
+    """
+    specs: list[clone.CloneSpec] = []
+    kept = list(args)
+    while True:
+        found, kept = _take_option(
+            kept, "-r", "--clone", what="repository"
+        )
+        if found is None:
+            return specs, kept
+        specs.append(clone.parse(found))
 
 
 def _take_option(
@@ -893,11 +942,13 @@ def agent_environment(
 
 SEED_OPTIONS = ("--seed", "--seed-file")
 BRANCH_OPTIONS = ("-b", "--branch")
+CLONE_OPTIONS = ("-r", "--clone")
 RELAY_OPTION = "--relay"
 NEW_OPTION = "--new"
 LAUNCH_OPTIONS = (
     *SEED_OPTIONS,
     *BRANCH_OPTIONS,
+    *CLONE_OPTIONS,
     RELAY_OPTION,
     NEW_OPTION,
 )
@@ -925,6 +976,7 @@ class LaunchOptions:
 
     seed: str | None = None
     branch: str | None = None
+    clones: tuple[clone.CloneSpec, ...] = ()
     relay: str | None = None
     fresh: bool = False
 
@@ -942,6 +994,7 @@ def _take_launch_options(
     text: str | None = None
     source: str | None = None
     branch: str | None = None
+    clones: list[clone.CloneSpec] = []
     relay: str | None = None
     fresh = False
     kept: list[str] = []
@@ -962,6 +1015,8 @@ def _take_launch_options(
             continue
         if name in BRANCH_OPTIONS:
             wants = "branch"
+        elif name in CLONE_OPTIONS:
+            wants = "repository"
         elif name == RELAY_OPTION:
             wants = "run pointer"
         else:
@@ -976,6 +1031,11 @@ def _take_launch_options(
             if branch is not None:
                 raise UsageError("a launch works on one branch, not two")
             branch = value
+            continue
+        if name in CLONE_OPTIONS:
+            # Parsed now, so a name the workspace cannot hold is refused
+            # before anything is created.
+            clones.append(clone.parse(value))
             continue
         if name == RELAY_OPTION:
             if relay is not None:
@@ -1006,7 +1066,11 @@ def _take_launch_options(
                 f"{RELAY_OPTION} needs the branch the handoff names, as -b"
             )
     return LaunchOptions(
-        seed=text, branch=branch, relay=relay, fresh=fresh
+        seed=text,
+        branch=branch,
+        clones=tuple(clones),
+        relay=relay,
+        fresh=fresh,
     ), kept
 
 
@@ -1196,6 +1260,7 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
 
     if workspace.create():
         print(f"created  {workspace.path}", file=sys.stderr)
+    _clone_specs(workspace, list(options.clones))
 
     turn = None
     if options.relay is not None:

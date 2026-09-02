@@ -116,6 +116,20 @@ assert_contains() {
     fail "output does not contain: $2"
 }
 
+# The stand-in agent prints its arguments last, so this is the whole of what
+# a launch handed it. A workspace named for the test would otherwise match
+# these greps through the workspace= field.
+agent_args() {
+  printf '%s\n' "$1" | sed -n 's/.* args=//p'
+}
+assert_agent_args() {
+  [ "$(agent_args "$1")" = "$2" ] || {
+    printf 'not ok - agent arguments were %s, not %s\n' \
+      "$(agent_args "$1")" "$2"
+    exit 1
+  }
+}
+
 assert_missing() {
   printf '%s' "$1" | grep -Fq -- "$2" &&
     fail "output unexpectedly contains: $2"
@@ -394,6 +408,37 @@ wt_run clone telos/pinned "file://$origins/spincyc/alpha" >/dev/null 2>&1 ||
   fail "cloning into a pinned workspace failed"
 [ "$(branch_of "$work/telos/pinned/spincyc/alpha")" = "relay/run-01" ] ||
   fail "the clone did not land on the pinned branch"
+
+printf '# one launch opens the whole line of work\n'
+# The branch, the repositories the work needs on it, and what to do there,
+# without new, clone and launch in sequence.
+open_out=$(wt_run claude triptych/proper-54 -b impl/proper-54 \
+  -r "file://$origins/spincyc/alpha" --clone "file://$origins/spincyc/beta" \
+  --seed 'take it to production' 2>&1)
+assert_contains "$open_out" 'cloned   spincyc/alpha  on impl/proper-54'
+assert_contains "$open_out" 'cloned   spincyc/beta  on impl/proper-54'
+assert_agent_args "$open_out" 'take it to production'
+opened_clone="$work/triptych/proper-54/spincyc/alpha"
+[ "$(branch_of "$opened_clone")" = "impl/proper-54" ] ||
+  fail "the launch clone is not on the branch the launch named"
+# A clone already there is a benign skip, not a second clone.
+assert_contains \
+  "$(wt_run claude triptych/proper-54 -r "file://$origins/spincyc/alpha" \
+    2>&1)" \
+  'ok       spincyc/alpha'
+printf '# wt new opens one the same way, without an agent\n'
+new_out=$(wt_run new -b impl/proper-55 -r "file://$origins/spincyc/alpha" \
+  triptych/proper-55 2>&1)
+assert_contains "$new_out" 'cloned   spincyc/alpha  on impl/proper-55'
+printf '# a repository wt cannot name is refused before anything is made\n'
+if bad_repo=$(wt_run claude triptych/proper-56 -r nonsense 2>&1); then
+  fail "a clone spec with no owner/repo was accepted"
+fi
+assert_contains "$bad_repo" 'cannot derive owner/repo'
+[ ! -e "$work/triptych/proper-56" ] ||
+  fail "a refused clone spec still created the workspace"
+wt_run rm -f triptych/proper-54 >/dev/null 2>&1
+wt_run rm -f triptych/proper-55 >/dev/null 2>&1
 
 printf '# the pin is what check, status and push mean by the branch\n'
 wt_run check >/dev/null 2>&1 || fail "a pinned workspace failed the check"
@@ -682,20 +727,6 @@ if unreadable_seed=$(wt_run --seed-file "$test_root/absent" \
   fail "an unreadable seed file was accepted"
 fi
 assert_contains "$unreadable_seed" 'cannot read the seed prompt'
-
-# The stand-in agent prints its arguments last, so this is the whole of what
-# a launch handed it. A workspace named for the test would otherwise match
-# these greps through the workspace= field.
-agent_args() {
-  printf '%s\n' "$1" | sed -n 's/.* args=//p'
-}
-assert_agent_args() {
-  [ "$(agent_args "$1")" = "$2" ] || {
-    printf 'not ok - agent arguments were %s, not %s\n' \
-      "$(agent_args "$1")" "$2"
-    exit 1
-  }
-}
 
 printf '# a launch resumes the session that agent last had here\n'
 # The first launch of an agent has nothing to continue; the next one does.

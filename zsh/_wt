@@ -22,7 +22,7 @@ _wt_launch_pending() {
     fi
     case ${words[index]} in
       --) return 1 ;;
-      --seed|--seed-file|-b|--branch|--relay) skip=1 ;;
+      --seed|--seed-file|-b|--branch|-r|--clone|--relay) skip=1 ;;
       -*) ;;
       *) return 1 ;;
     esac
@@ -35,6 +35,7 @@ _wt_launch() {
   launch_options=(
     '--new:start a fresh session instead of resuming the last one'
     '--branch:work on this branch instead of the derived one'
+    '--clone:clone owner/repo, a URL or a path into the workspace'
     '--relay:open a relay turn from <owner>/<repo>@<brief sha>'
     '--seed:open the agent with this prompt'
     '--seed-file:read that prompt from a file, or - for stdin'
@@ -43,6 +44,7 @@ _wt_launch() {
     --seed-file) _files; return ;;
     --seed) _message 'seed prompt'; return ;;
     -b|--branch) _message 'branch name'; return ;;
+    -r|--clone) _message 'owner/repo, a URL, or a path'; return ;;
     --relay) _message '<owner>/<repo>@<brief sha>'; return ;;
   esac
   local separator=${words[(I)--]}
@@ -98,16 +100,17 @@ _wt() {
     claude|codex|droid)
       _wt_launch 3
       ;;
-    --new|--seed|--seed-file|-b|--branch|--relay|\
-    --seed=*|--seed-file=*|--branch=*|--relay=*)
+    --new|--seed|--seed-file|-b|--branch|-r|--clone|--relay|\
+    --seed=*|--seed-file=*|--branch=*|--clone=*|--relay=*)
       # A leading launch option is a launch under $WT_AGENT that has not
       # reached its workspace yet.
       _wt_launch 2
       ;;
     new)
-      # -b is the only option new takes a value for.
       if [[ ${words[CURRENT-1]} == (-b|--branch) ]]; then
         _message 'branch name'
+      elif [[ ${words[CURRENT-1]} == (-r|--clone) ]]; then
+        _message 'owner/repo, a URL, or a path'
       else
         _wt_launch_pending 3 && _wt_workspaces
       fi

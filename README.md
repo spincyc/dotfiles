@@ -429,9 +429,24 @@ therefore explicit: `wt push`, or `git push -u origin "$WT_BRANCH"` inside
 one clone. `wt check` warns about a repository that has left the branch, and
 `WT_BRANCH_PREFIX` renames the `feature` half.
 
-A workspace can work on a branch it did not derive. `-b` (`--branch`) on `wt
-new`, `wt clone` or a launch names one, and it is recorded in the workspace's
-`.wt-workspace`:
+One launch opens a whole line of work. `-b` names the branch, `-r` clones what
+the work needs onto it, and `--seed` says what to do there:
+
+```sh
+wt claude triptych/proper-54 -b impl/proper-54-production \
+  -r spincyc/triptych --seed-file ~/p54.md
+```
+
+Before `-r` that was three commands — `wt new`, `wt clone -w`, then the launch
+— because nothing else clones. `-r` is repeatable, takes anything `wt clone`
+takes (`owner/repo`, a URL, or a path on this disk), and is a benign skip for
+a repository already there. `wt new` takes both options the same way, for
+opening a workspace without starting an agent. A spec `wt` cannot read an
+owner and repository out of is refused before the workspace is created.
+
+`-b` (`--branch`) works on `wt new`, `wt clone` and a launch, and is recorded
+in the workspace's `.wt-workspace`, so a workspace can work on a branch it did
+not derive:
 
 ```sh
 wt new -b relay/2026-09-02-01 telos/relay-run
@@ -496,6 +511,7 @@ release: `aiq doctor` reports the switch on its `capture` line once it is
 supported.
 
 ```sh
+wt claude proj/slug -b impl/x -r own/repo --seed-file ./brief.md  # open one
 wt ls                                   # every workspace and the repos it holds
 wt ls -q                                # bare names, one per line, for scripts
 wt clone telos/agent-sync spincyc/telos # cloned onto feature/agent-sync
