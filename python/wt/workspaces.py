@@ -15,7 +15,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import branches, guidance, names, repos, scratch, slots
+from . import branches, guidance, names, repos, scratch, sessions, slots
 from .config import Config
 from .errors import (
     PartlyRemoved,
@@ -384,7 +384,11 @@ def inventory(workspace: Workspace) -> Inventory:
 
     for entry in entries:
         name = entry.name
-        if name in guidance.FILENAMES or name in (MARKER, GROUP_MARKER):
+        if name in guidance.FILENAMES or name in (
+            MARKER,
+            GROUP_MARKER,
+            sessions.RECORD,
+        ):
             continue
         if name == scratch.NAME or entry.is_symlink():
             # A symlink holds nothing; removing it loses no work.

@@ -10,9 +10,10 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
-from . import checks, clone, gitcmd, repos, slots, workspaces
+from . import checks, clone, gitcmd, repos, sessions, slots, workspaces
 from .config import KNOWN_AGENTS, Config
 from .errors import (
     PartlyRemoved,
@@ -23,7 +24,8 @@ from .errors import (
 )
 
 USAGE = """\
-Usage: wt [claude|codex|droid] [<project>/]<slug>[/<child>...] [agent-args...]
+Usage: wt [claude|codex|droid] [--new] [--seed[-file] <x>]
+          [<project>/]<slug>[/<child>...] [agent-args...]
        wt <verb> [<workspace>] [args...]
 
 Launch:
@@ -32,6 +34,22 @@ Launch:
   wt droid telos/agent-sync       directory
   wt telos/agent-sync             Use $WT_AGENT (default claude)
   wt agent-sync                   A bare slug takes $WT_PROJECT
+
+  --new                           Start a fresh session; without it a launch
+                                  resumes the one this agent had here
+  --seed <text>                   Open the agent with this prompt, given to
+                                  it as its trailing prompt argument
+  --seed-file <path>              The same prompt read from a file, or from
+                                  stdin when <path> is -, so that generated
+                                  text never passes through shell quoting
+
+These are wt's own and may be typed either side of the workspace; -- ends them
+and hands everything after it to the agent untouched. A launch continues the
+session the named agent last had in that workspace, when wt recorded one and
+the agent has a spelling for it; claude, codex and droid do, anything else is
+always fresh. Only claude can be resumed and seeded at once, since codex and
+droid both read a trailing prompt as the session to resume. Use --new when
+driving the agent's own session flags yourself.
 
 A workspace is a leaf named <project>/<slug>[/<child>...]. Intermediate
 components group a stack of workspaces. Every repository in a leaf works on
@@ -845,6 +863,104 @@ def agent_environment(
     }
 
 
+SEED_OPTIONS = ("--seed", "--seed-file")
+NEW_OPTION = "--new"
+LAUNCH_OPTIONS = (*SEED_OPTIONS, NEW_OPTION)
+
+
+def _read_seed(path: str) -> str:
+    """The seed prompt held in a file, or on stdin when path is `-`.
+
+    A prompt read from a file never passes through shell quoting, which is
+    the whole reason this exists alongside `--seed`: the text a planning
+    agent generates is the last thing that should be interpreted by a shell
+    on the way to the agent that will act on it.
+    """
+    if path == "-":
+        return sys.stdin.read()
+    try:
+        return Path(path).expanduser().read_text(encoding="utf-8")
+    except OSError as error:
+        raise WtError(f"cannot read the seed prompt: {error}") from error
+
+
+@dataclass(frozen=True)
+class LaunchOptions:
+    """What `wt` itself was told about a launch, before the agent's own."""
+
+    seed: str | None = None
+    fresh: bool = False
+
+
+def _take_launch_options(
+    args: list[str],
+) -> tuple[LaunchOptions, list[str]]:
+    """Read wt's own launch options from wherever they were typed.
+
+    Either side of the workspace, because `wt claude telos/demo --seed ...`
+    is how anyone would write it: naming the workspace and then saying what
+    to do there. `--` ends them, so an agent with a `--seed` or `--new` flag
+    of its own is still reachable, the way it is for the fan-out verbs.
+    """
+    text: str | None = None
+    source: str | None = None
+    fresh = False
+    kept: list[str] = []
+    rest = list(args)
+    while rest:
+        head = rest.pop(0)
+        if head == "--":
+            kept.extend(rest)
+            break
+        name, assigned, inline = head.partition("=")
+        if name not in LAUNCH_OPTIONS:
+            kept.append(head)
+            continue
+        if name == NEW_OPTION:
+            if assigned:
+                raise UsageError(f"{NEW_OPTION} takes no value")
+            fresh = True
+            continue
+        if assigned:
+            value = inline
+        elif rest:
+            value = rest.pop(0)
+        else:
+            raise UsageError(f"{name} needs a prompt")
+        if text is not None:
+            raise UsageError(
+                f"{source} and {name} name one seed prompt, not two"
+            )
+        text = value if name == "--seed" else _read_seed(value)
+        source = name
+    if text is not None:
+        # A file or a heredoc almost always ends in a newline that means
+        # nothing, and leading blank lines survive copy and paste; neither
+        # belongs in the prompt an agent is handed.
+        text = text.strip()
+        if not text:
+            raise UsageError(f"{source} gave an empty seed prompt")
+    return LaunchOptions(seed=text, fresh=fresh), kept
+
+
+def _restore_terminal_stdin() -> None:
+    """Give the agent a terminal back after reading a seed from stdin.
+
+    Reading the prompt from a pipe or a heredoc leaves stdin at end of file,
+    and an interactive agent handed an exhausted stdin exits immediately.
+    Without a controlling terminal — a script, a hook, CI — there is nothing
+    to restore and nothing that wanted it.
+    """
+    try:
+        handle = os.open("/dev/tty", os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.dup2(handle, sys.stdin.fileno())
+    finally:
+        os.close(handle)
+
+
 def launch(config: Config, agent: str, args: list[str]) -> int:
     """Create or reuse the workspace, take a slot, and become the agent.
 
@@ -853,6 +969,8 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
     from an existing leaf; component-prefix matching does not treat general
     spelling similarity as identity.
     """
+    options, args = _take_launch_options(args)
+    seed = options.seed
     if not args:
         raise UsageError(f"{agent} needs a workspace")
     if shutil.which(agent) is None:
@@ -869,17 +987,57 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
     if workspace.create():
         print(f"created  {workspace.path}", file=sys.stderr)
 
+    resuming = not options.fresh and sessions.resumable(
+        workspace.path, agent
+    )
+    if resuming and seed is not None and not sessions.carries_prompt(agent):
+        raise UsageError(
+            f"{agent} cannot be given a seed prompt while resuming its "
+            f"previous session in {workspace.name}; use --new for a fresh "
+            f"session, or drop the seed"
+        )
+    # Recorded before the exec, because after it there is no wt left to
+    # record anything. A launch that dies immediately still counts: the
+    # agent may well have written a session before it did.
+    sessions.record(workspace.path, agent)
+
     os.environ.update(agent_environment(workspace, slot))
     print(
         f"wt: {agent} in {workspace.path} on {workspace.branch} "
         f"(slot {slot})",
         file=sys.stderr,
     )
+    if resuming:
+        print(
+            f"wt: resuming the previous {agent} session here; --new starts "
+            f"a fresh one",
+            file=sys.stderr,
+        )
+    # The prompt itself is never echoed: it can be long, and a handoff it
+    # carries is the agent's to read rather than the terminal's to keep.
+    if seed is not None:
+        print(
+            f"wt: seeded with a {len(seed)}-character prompt",
+            file=sys.stderr,
+        )
+        _restore_terminal_stdin()
     sys.stdout.flush()
     sys.stderr.flush()
     try:
         os.chdir(workspace.path)
-        os.execvp(agent, [agent, *args[1:]])
+        # The seed goes last and positional: claude, codex and droid each
+        # read a trailing argument as the prompt to open with, so one launch
+        # seeds any of them without wt knowing one agent's flags from
+        # another's. Resuming is the exception it does have to know.
+        os.execvp(
+            agent,
+            [
+                agent,
+                *(sessions.arguments(agent) if resuming else ()),
+                *args[1:],
+                *([seed] if seed else []),
+            ],
+        )
     except OSError as error:
         raise WtError(f"cannot start {agent}: {error}") from error
     return 0  # unreachable: execvp either replaces this process or raises
@@ -930,6 +1088,10 @@ def dispatch(config: Config, argv: list[str]) -> int:
     if command in KNOWN_AGENTS:
         return launch(config, command, args)
     if command.startswith("-"):
+        # A leading seed option is a launch under $WT_AGENT that has not
+        # reached its workspace yet; launch owns the parsing.
+        if command.partition("=")[0] in LAUNCH_OPTIONS:
+            return launch(config, config.agent, argv)
         raise UsageError(f"unknown option: {command}")
     close = difflib.get_close_matches(command, VERBS, n=1, cutoff=0.8)
     if close and "/" not in command:

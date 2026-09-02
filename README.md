@@ -236,6 +236,71 @@ wt agent-sync                   # a bare slug takes $WT_PROJECT
 The project only groups workspaces and names nothing on a forge; the
 repositories a workspace holds are still cloned explicitly.
 
+A launch can also hand the agent the prompt to open with, so that creating
+the workspace and starting the work is one command rather than a launch
+followed by a paste:
+
+```sh
+wt claude telos/agent-sync --seed 'read docs/PLAN.md and start at step 1'
+wt claude telos/agent-sync --seed-file ./brief.txt   # the same, from a file
+wt codex telos/agent-sync --seed-file -              # or from stdin
+```
+
+`--seed` and `--seed-file` are `wt`'s own and may be typed either side of the
+workspace name. `--` ends them and hands everything after it to the agent
+untouched, the way it does for `wt git` and `wt exec`, so an agent with a
+`--seed` flag of its own is still reachable as `wt claude ws -- --seed x`. The
+prompt is appended as the agent's trailing positional argument, which `claude`,
+`codex` and `droid` each read as the prompt to open with. `wt` never echoes it
+— a handoff is for the agent to read, not for the terminal to keep — and
+reports only its length.
+
+Prefer `--seed-file` for anything generated. Text written by another agent is
+exactly what should not be interpreted by a shell on its way to the agent that
+will act on it, and a file or a heredoc keeps it out of shell quoting
+altogether. `-` reads stdin and then reopens the controlling terminal for the
+agent, so a heredoc still leaves an interactive session to type into:
+
+```sh
+wt claude telos/agent-sync --seed-file - <<'PROMPT'
+read https://raw.githubusercontent.com/spincyc/dotfiles/relay-v5/relay/PROTOCOL.md
+and execute the brief it points at
+PROMPT
+```
+
+Surrounding whitespace is stripped, and an empty prompt is refused rather than
+launching an agent with nothing to do.
+
+A launch continues where that agent left off. A workspace is one line of work,
+so running the same agent in it again almost always means carrying on, and
+`--new` is how you say otherwise:
+
+```sh
+wt claude telos/agent-sync          # resumes the last claude session here
+wt claude --new telos/agent-sync    # starts a fresh one
+wt codex telos/agent-sync           # codex resumes its own session, not that one
+```
+
+Resuming is the one place `wt` has to know an agent's own flags, because there
+is no shared spelling for it and an agent asked to continue a session it never
+had reports that instead of starting one. So `wt` notes which agents have run
+in a workspace, in a `.wt-agents` file beside `.wt-workspace`, and offers each
+of them the incantation it understands: `--continue` for `claude`,
+`resume --last` for `codex`, `--resume` for `droid`. A first launch has nothing
+to continue and is fresh; so is any agent not in that list, since guessing a
+flag wrong costs a session that will not start. Losing the record costs a
+resume and never work.
+
+Only `claude` can be resumed and seeded at once. `codex resume` reads its first
+positional as a session id and droid's `--resume` takes an optional session id,
+so in both a seed prompt would be read as a session to resume; `wt` refuses
+that combination and names `--new` rather than launching something that
+resumes nothing.
+
+`--new` is also what to pass when you are driving the agent's own session
+flags: `wt claude --new telos/agent-sync -- --resume <id>` picks the session
+yourself, where without `--new` `wt` would add its `--continue` alongside.
+
 Slug components can also group a replay stack. Treat the intermediate path as
 a group and put each replay in its own leaf:
 
@@ -378,7 +443,9 @@ the workspace guidance that tells agents to invoke `wt` directly.
 Zsh completion lives in `zsh/_wt`, which `.zshrc` puts on `fpath` from this
 checkout, so it needs no reinstall and has no `managed_links` entry:
 completions are Zsh-only, unlike the `bin/` tools. It completes the verbs
-and, more usefully, canonical workspace names taken live from `wt ls -q`.
+and, more usefully, canonical workspace names taken live from `wt ls -q`. On a
+launch it also completes `--new`, `--seed` and `--seed-file`, and files after
+`--seed-file`.
 
 `--force` (`-f`) and `--dry-run` (`-n`) are read from wherever in the
 arguments they were typed, so `wt rm telos/demo -f` works as readily as
@@ -476,9 +543,11 @@ The modules are separated so each is usable alone: `wt.config` settings,
 and the questions that decide whether a clone holds unsaved work,
 `wt.branches` the workspace branch and its upstream, `wt.clone` clone specs
 including local paths, `wt.guidance` the workspace documents, `wt.scratch`
-the `.scratch` convention and its local Git exclusion, `wt.workspaces`
-creation, resolution and the one disposal gate every destructive verb goes
-through, `wt.slots` the flock registry of running agents, `wt.checks` the
+the `.scratch` convention and its local Git exclusion, `wt.sessions` which
+agents have run in a workspace and how each is asked to continue,
+`wt.workspaces` creation, resolution and the one disposal gate every
+destructive verb goes through, `wt.slots` the flock registry of running
+agents, `wt.checks` the
 sanity check, and `wt.cli` the command line, whose `agent_environment` is the
 exported-variable contract above. Nothing outside `wt.cli` prints: the only
 output another module produces is a child git's own, on the terminal it was

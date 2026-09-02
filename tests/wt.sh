@@ -558,6 +558,117 @@ assert_contains "$(wt_run telos/demo 2>/dev/null)" 'agent=fake-agent'
 printf '# the launched agent keeps no work ledger\n'
 assert_contains "$launch_out" 'aiq_disable=1'
 
+# The stand-in agent has no resume spelling, so these read the seed alone.
+printf '# a seed prompt opens the agent, after the agent arguments\n'
+seed_out=$(wt_run --seed 'read the protocol and claim 002' \
+  telos/demo --flag value 2>/dev/null)
+assert_contains "$seed_out" 'args=--flag value read the protocol and claim 002'
+assert_contains "$seed_out" 'workspace=telos/demo'
+
+printf '# --seed=<text> spells the same thing\n'
+assert_contains "$(wt_run --seed=inline telos/demo 2>/dev/null)" 'args=inline'
+
+printf '# a seed prompt comes from a file without passing through the shell\n'
+printf 'brief 001, claim 002\n' >"$test_root/seed-prompt.txt"
+assert_contains \
+  "$(wt_run --seed-file "$test_root/seed-prompt.txt" telos/demo 2>/dev/null)" \
+  'args=brief 001, claim 002'
+
+printf '# a seed prompt comes from stdin, under $WT_AGENT\n'
+# The trailing newline a heredoc leaves is not part of the prompt.
+stdin_out=$(printf 'from stdin\n' | wt_run --seed-file - telos/demo 2>/dev/null)
+assert_contains "$stdin_out" 'agent=fake-agent'
+assert_contains "$stdin_out" 'args=from stdin'
+
+printf '# a seed option reads the same after the workspace as before it\n'
+assert_contains "$(wt_run telos/demo --seed after 2>/dev/null)" 'args=after'
+assert_contains \
+  "$(wt_run telos/demo --flag value --seed after 2>/dev/null)" \
+  'args=--flag value after'
+
+printf '# -- ends wt options and hands the rest to the agent untouched\n'
+# Otherwise wt would quietly eat an agent flag that happens to share a name.
+assert_contains "$(wt_run telos/demo -- --seed mine 2>/dev/null)" \
+  'args=--seed mine'
+assert_contains "$(wt_run telos/demo -- --new 2>/dev/null)" 'args=--new'
+
+printf '# a seed prompt is named once, is not empty, and is not bare\n'
+if wt_run claude --seed one --seed-file "$test_root/seed-prompt.txt" \
+  telos/demo >/dev/null 2>&1; then
+  fail "two seed options named one prompt"
+fi
+if empty_seed=$(wt_run --seed '  ' telos/demo 2>&1); then
+  fail "an empty seed prompt was accepted"
+fi
+assert_contains "$empty_seed" 'empty seed prompt'
+if missing_seed=$(wt_run claude --seed telos/demo 2>&1); then
+  fail "a seed option with no workspace after it launched"
+fi
+assert_contains "$missing_seed" 'claude needs a workspace'
+if unreadable_seed=$(wt_run --seed-file "$test_root/absent" \
+  telos/demo 2>&1); then
+  fail "an unreadable seed file was accepted"
+fi
+assert_contains "$unreadable_seed" 'cannot read the seed prompt'
+
+# The stand-in agent prints its arguments last, so this is the whole of what
+# a launch handed it. A workspace named for the test would otherwise match
+# these greps through the workspace= field.
+agent_args() {
+  printf '%s\n' "$1" | sed -n 's/.* args=//p'
+}
+assert_agent_args() {
+  [ "$(agent_args "$1")" = "$2" ] || {
+    printf 'not ok - agent arguments were %s, not %s\n' \
+      "$(agent_args "$1")" "$2"
+    exit 1
+  }
+}
+
+printf '# a launch resumes the session that agent last had here\n'
+# The first launch of an agent has nothing to continue; the next one does.
+assert_agent_args "$(wt_run claude telos/carry-on 2>/dev/null)" ''
+assert_agent_args \
+  "$(wt_run claude telos/carry-on --flag value 2>/dev/null)" \
+  '--continue --flag value'
+
+printf '# each agent resumes only its own session, in its own spelling\n'
+assert_agent_args "$(wt_run codex telos/carry-on 2>/dev/null)" ''
+assert_agent_args "$(wt_run codex telos/carry-on 2>/dev/null)" 'resume --last'
+assert_agent_args "$(wt_run droid telos/carry-on 2>/dev/null)" ''
+assert_agent_args "$(wt_run droid telos/carry-on 2>/dev/null)" '--resume'
+
+printf '# an agent wt has no resume spelling for is always fresh\n'
+wt_run telos/carry-on >/dev/null 2>&1
+assert_agent_args "$(wt_run telos/carry-on 2>/dev/null)" ''
+
+printf '# --new forces a fresh session\n'
+assert_agent_args "$(wt_run claude --new telos/carry-on 2>/dev/null)" ''
+assert_agent_args "$(wt_run claude telos/carry-on 2>/dev/null)" '--continue'
+
+printf '# resuming and seeding together is refused where it cannot work\n'
+# codex reads a trailing prompt as the session to resume, so wt says so
+# rather than launching a session that resumes nothing.
+if refused=$(wt_run codex --seed 'the next brief' telos/carry-on 2>&1); then
+  fail "codex was resumed and seeded at once"
+fi
+assert_contains "$refused" 'cannot be given a seed prompt while resuming'
+assert_agent_args \
+  "$(wt_run codex --new --seed 'the next brief' telos/carry-on 2>/dev/null)" \
+  'the next brief'
+assert_agent_args \
+  "$(wt_run claude --seed 'the next brief' telos/carry-on 2>/dev/null)" \
+  '--continue the next brief'
+
+printf '# the resume record is wt bookkeeping, not a stray\n'
+[ -f "$work/telos/carry-on/.wt-agents" ] ||
+  fail "no launch record was written"
+assert_contains "$(wt_run check 2>&1)" 'ok'
+if printf '%s\n' "$(wt_run sweep -n 2>&1)" | grep -Fq '.wt-agents'; then
+  fail "the launch record was reported as unaccounted for"
+fi
+wt_run rm -f telos/carry-on >/dev/null 2>&1
+
 printf '# launching creates the workspace, a near-miss name included\n'
 # A slug one character from an existing one used to be refused as a typo,
 # which made `wt new` a required first step for the next lane of work.

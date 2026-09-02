@@ -9,6 +9,51 @@ _wt_workspaces() {
   (( $#found )) && _describe -t workspaces 'workspace' found
 }
 
+# True while the workspace has not been named yet in the words from $1 on, so
+# it is still what to complete. wt's own launch options may be typed either
+# side of it, and `--` hands everything after it to the agent, which wt knows
+# nothing about.
+_wt_launch_pending() {
+  local index skip=0
+  for (( index = $1; index < CURRENT; index++ )); do
+    if (( skip )); then
+      skip=0
+      continue
+    fi
+    case ${words[index]} in
+      --) return 1 ;;
+      --seed|--seed-file) skip=1 ;;
+      -*) ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
+}
+
+_wt_launch() {
+  local -a launch_options
+  launch_options=(
+    '--new:start a fresh session instead of resuming the last one'
+    '--seed:open the agent with this prompt'
+    '--seed-file:read that prompt from a file, or - for stdin'
+  )
+  case ${words[CURRENT-1]} in
+    --seed-file) _files; return ;;
+    --seed) _message 'seed prompt'; return ;;
+  esac
+  local separator=${words[(I)--]}
+  if (( separator && separator < CURRENT )); then
+    # Past `--` every word is the agent's, and wt has nothing to say.
+    _default
+    return
+  fi
+  if [[ ${words[CURRENT]} == -* ]]; then
+    _describe -t options 'launch option' launch_options
+    return
+  fi
+  _wt_launch_pending $1 && _wt_workspaces
+}
+
 _wt() {
   local -a verbs
   verbs=(
@@ -46,7 +91,15 @@ _wt() {
   fi
 
   case ${words[2]} in
-    claude|codex|droid|path|branch|status|log|fetch|sync|push|tidy|sweep|rm|new)
+    claude|codex|droid)
+      _wt_launch 3
+      ;;
+    --new|--seed|--seed-file|--seed=*|--seed-file=*)
+      # A leading launch option is a launch under $WT_AGENT that has not
+      # reached its workspace yet.
+      _wt_launch 2
+      ;;
+    path|branch|status|log|fetch|sync|push|tidy|sweep|rm|new)
       (( CURRENT == 3 )) && _wt_workspaces
       ;;
     git|exec|clone)
@@ -61,7 +114,8 @@ _wt() {
       fi
       ;;
     *)
-      _default
+      # A bare slug is a launch too, so its options complete the same way.
+      _wt_launch 2
       ;;
   esac
 }
