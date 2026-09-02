@@ -39,14 +39,24 @@ class SlotState:
     busy: bool
     info: str = ""
 
+    def field(self, name: str) -> str:
+        """One `key=value` from the info line, or empty when it has none."""
+        for token in self.info.split():
+            key, separator, value = token.partition("=")
+            if separator and key == name:
+                return value
+        return ""
+
     @property
     def workspace(self) -> str:
         """The workspace this slot was taken for, or empty when unnamed."""
-        for token in self.info.split():
-            key, separator, value = token.partition("=")
-            if separator and key == "workspace":
-                return value
-        return ""
+        return self.field("workspace")
+
+    @property
+    def relay(self) -> str:
+        """The relay run and turn this slot is working, when it is one."""
+        run, turn = self.field("run"), self.field("turn")
+        return f"{run} turn {turn}" if run and turn else ""
 
 
 @dataclass(frozen=True)
@@ -167,12 +177,40 @@ class SlotPool:
     def __exit__(self, *exc: object) -> None:
         self.release()
 
-    def _describe(self, index: int, agent: str, workspace: str) -> None:
+    def describe(
+        self,
+        agent: str,
+        workspace: str,
+        run: str = "",
+        turn: str = "",
+    ) -> None:
+        """Say more about the slot this pool holds than acquiring could.
+
+        A relay turn's run and turn number are only known after the brief
+        has been read, which happens after the slot is taken; without this
+        `wt agents` could name the workspace but not which turn of which
+        run is being worked in it.
+        """
+        if self._held_index is None:
+            raise WtError("this pool holds no agent slot to describe")
+        self._describe(self._held_index, agent, workspace, run, turn)
+
+    def _describe(
+        self,
+        index: int,
+        agent: str,
+        workspace: str,
+        run: str = "",
+        turn: str = "",
+    ) -> None:
         started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        # Absent rather than empty: a reader splits on whitespace, and
+        # `run=` would otherwise read as a run whose name is nothing.
+        relay = f" run={run} turn={turn}" if run and turn else ""
         try:
             self.info_path(index).write_text(
-                f"agent={agent} workspace={workspace} pid={os.getpid()} "
-                f"started={started}\n",
+                f"agent={agent} workspace={workspace}{relay} "
+                f"pid={os.getpid()} started={started}\n",
                 encoding="utf-8",
             )
         except OSError:

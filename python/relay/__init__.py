@@ -27,11 +27,21 @@ The modules are meant to be reused on their own:
 
 PROTOCOL_VERSION = "relay-v6"
 
+# Where this version of the document lives, pinned so both sides of a run
+# read identical rules. The document names the same URL; `relay_unit` holds
+# the two together.
+PROTOCOL_URL = (
+    "https://raw.githubusercontent.com/spincyc/dotfiles/"
+    f"{PROTOCOL_VERSION}/relay/PROTOCOL.md"
+)
+
 __all__ = [
+    "PROTOCOL_URL",
     "PROTOCOL_VERSION",
     "cli",
     "errors",
     "gitcmd",
+    "handoff",
     "identity",
     "steps",
     "turnfile",

@@ -208,12 +208,16 @@ for agent_name in claude codex droid; do
   chmod 755 -- "$fake_bin/$agent_name"
 done
 
-# A stand-in gh that can only refuse: bare owner/repo clones are the one path
-# that would otherwise reach the network, and this makes that impossible
-# rather than merely unused.
-cat >"$fake_bin/gh" <<'EOF'
+# A stand-in gh. Bare owner/repo clones are the one path that would otherwise
+# reach the network, so this serves them from the local origins instead and
+# refuses everything else: the suite stays offline by construction rather
+# than by never exercising the path.
+cat >"$fake_bin/gh" <<EOF
 #!/bin/sh
-printf 'gh: the wt suite is offline: %s\n' "$*" >&2
+if [ "\$1" = repo ] && [ "\$2" = clone ]; then
+  exec git clone --quiet -- "file://$origins/\$3" "\$4"
+fi
+printf 'gh: the wt suite is offline: %s\n' "\$*" >&2
 exit 1
 EOF
 chmod 755 -- "$fake_bin/gh"
@@ -719,6 +723,110 @@ if printf '%s\n' "$(wt_run sweep -n 2>&1)" | grep -Fq '.wt-agents'; then
   fail "the launch record was reported as unaccounted for"
 fi
 wt_run rm -f telos/carry-on >/dev/null 2>&1
+
+printf '# a launch handoff opens an agent on the brief a commit published\n'
+# The whole point of the form: the line carries a pointer, and everything
+# else — run, turns, protocol, prompt — comes out of the brief's front
+# matter at that commit.
+make_origin spincyc/relayed
+relay_seed="$test_root/relay-seed"
+git clone --quiet -- "file://$origins/spincyc/relayed" "$relay_seed"
+git -C "$relay_seed" switch --quiet -c feat/relay
+mkdir -p "$relay_seed/.agent/runs/2026-09-02-01"
+cat >"$relay_seed/.agent/runs/2026-09-02-01/001-brief.md" <<'BRIEF'
+---
+protocol: RELAY_VERSION
+run: 2026-09-02-01
+turn: 001
+role: planner
+agent: claude-web
+subagents: 0
+branch: feat/relay
+base: 0000000000000000000000000000000000000000
+---
+
+Objective: the executor lands on this brief and no other.
+BRIEF
+relay_version=$(python3 -c 'import sys; sys.path.insert(0, "python"); import relay; print(relay.PROTOCOL_VERSION)')
+sed -i "s/RELAY_VERSION/$relay_version/" \
+  "$relay_seed/.agent/runs/2026-09-02-01/001-brief.md"
+git -C "$relay_seed" add .agent
+git -C "$relay_seed" commit --quiet -m 'brief 001'
+git -C "$relay_seed" push --quiet -u origin feat/relay
+relay_sha=$(git -C "$relay_seed" rev-parse HEAD)
+
+relay_out=$(wt_run claude relay/2026-09-02-01 -b feat/relay \
+  --relay "spincyc/relayed@$relay_sha" 2>&1)
+assert_contains "$relay_out" "$relay_version run 2026-09-02-01, brief 001"
+assert_contains "$relay_out" 'claim 002, on feat/relay'
+# The prompt names the document, the brief, and the turn to claim, and
+# nothing about the work: the brief is the authority for that.
+assert_contains "$relay_out" "$relay_sha:.agent/runs/2026-09-02-01/001-brief.md"
+assert_contains "$relay_out" 'claim turn 002'
+assert_contains "$relay_out" '/relay/PROTOCOL.md'
+if printf '%s\n' "$relay_out" | grep -Fq 'no other'; then
+  fail "the launch prompt repeated the brief instead of pointing at it"
+fi
+# The clone is on the branch the handoff named, not on one derived from the
+# workspace name, which is what keeps status, push and check meaningful.
+[ "$(branch_of "$work/relay/2026-09-02-01/spincyc/relayed")" = "feat/relay" ] ||
+  fail "the relay clone is not on the handoff branch"
+
+printf '# a relay launch waits, then says what the planner is owed\n'
+assert_contains "$relay_out" 'done 2026-09-02-01 002'
+assert_contains "$relay_out" 'relay blocked'
+
+printf '# the brief is the authority for the branch, not the handoff\n'
+if wrong_branch=$(wt_run claude relay/wrong -b feat/other \
+  --relay "spincyc/relayed@$relay_sha" 2>&1); then
+  fail "a handoff disagreeing with its brief was accepted"
+fi
+assert_contains "$wrong_branch" 'the brief at'
+wt_run rm -f relay/wrong >/dev/null 2>&1
+
+printf '# a run pointer is checked before anything is cloned\n'
+if bad_sha=$(wt_run claude relay/bad -b feat/relay \
+  --relay spincyc/relayed@nope 2>&1); then
+  fail "a short sha was accepted as a run pointer"
+fi
+assert_contains "$bad_sha" '40-character sha'
+if bad_shape=$(wt_run claude relay/bad -b feat/relay \
+  --relay spincyc/relayed 2>&1); then
+  fail "a pointer with no sha was accepted"
+fi
+assert_contains "$bad_shape" '<owner>/<repo>@<sha>'
+if no_branch=$(wt_run claude relay/bad \
+  --relay "spincyc/relayed@$relay_sha" 2>&1); then
+  fail "a launch handoff without -b was accepted"
+fi
+assert_contains "$no_branch" 'needs the branch the handoff names'
+if both=$(wt_run claude relay/bad -b feat/relay --seed mine \
+  --relay "spincyc/relayed@$relay_sha" 2>&1); then
+  fail "a launch handoff and a seed prompt were accepted together"
+fi
+assert_contains "$both" 'would give the executor a second one'
+if plain_commit=$(wt_run claude relay/plain -b main \
+  --relay "spincyc/relayed@$(git -C "$relay_seed" rev-parse HEAD~1)" 2>&1); then
+  fail "a commit publishing no brief was accepted"
+fi
+assert_contains "$plain_commit" 'publishes no brief'
+wt_run rm -f relay/bad >/dev/null 2>&1
+wt_run rm -f relay/plain >/dev/null 2>&1
+
+printf '# wt agents names the run and turn a relay worker is on\n'
+rm -f -- "$test_root/slow-release" "$test_root"/slow-started-*
+wt_agent=slow-agent wt_run relay/2026-09-02-01 -b feat/relay \
+  --relay "spincyc/relayed@$relay_sha" >/dev/null 2>&1 &
+relay_agent=$!
+wait_for 'wt_run agents | grep -Fq "run=2026-09-02-01"'
+relay_agents=$(wt_run agents)
+assert_contains "$relay_agents" 'workspace=relay/2026-09-02-01'
+assert_contains "$relay_agents" 'run=2026-09-02-01 turn=002'
+: >"$test_root/slow-release"
+wait "$relay_agent" 2>/dev/null || true
+rm -f -- "$test_root/slow-release" "$test_root"/slow-started-*
+wait_for 'wt_run agents | grep -Fq "no agents running"'
+wt_run rm -f relay/2026-09-02-01 >/dev/null 2>&1
 
 printf '# launching creates the workspace, a near-miss name included\n'
 # A slug one character from an existing one used to be refused as a typo,

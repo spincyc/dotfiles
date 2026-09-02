@@ -44,6 +44,10 @@ Launch:
   --seed-file <path>              The same prompt read from a file, or from
                                   stdin when <path> is -, so that generated
                                   text never passes through shell quoting
+  --relay <owner>/<repo>@<sha>    Open an agent on the relay brief that
+                                  commit published: clone the repository
+                                  onto the -b branch, read the brief there,
+                                  and derive the prompt from it
 
 These are wt's own and may be typed either side of the workspace; -- ends them
 and hands everything after it to the agent untouched. A launch continues the
@@ -52,6 +56,11 @@ the agent has a spelling for it; claude, codex and droid do, anything else is
 always fresh. Only claude can be resumed and seeded at once, since codex and
 droid both read a trailing prompt as the session to resume. Use --new when
 driving the agent's own session flags yourself.
+
+--relay is what a relay-v6 launch handoff invokes. It needs -b, it derives
+everything else from the brief's front matter at the pinned commit, and it
+waits for the agent rather than becoming it, so that when the session ends it
+can print the acknowledgement the run owes its planner.
 
 A workspace is a leaf named <project>/<slug>[/<child>...]. Intermediate
 components group a stack of workspaces. Every repository in a leaf works on
@@ -877,8 +886,14 @@ def agent_environment(
 
 SEED_OPTIONS = ("--seed", "--seed-file")
 BRANCH_OPTIONS = ("-b", "--branch")
+RELAY_OPTION = "--relay"
 NEW_OPTION = "--new"
-LAUNCH_OPTIONS = (*SEED_OPTIONS, *BRANCH_OPTIONS, NEW_OPTION)
+LAUNCH_OPTIONS = (
+    *SEED_OPTIONS,
+    *BRANCH_OPTIONS,
+    RELAY_OPTION,
+    NEW_OPTION,
+)
 
 
 def _read_seed(path: str) -> str:
@@ -903,6 +918,7 @@ class LaunchOptions:
 
     seed: str | None = None
     branch: str | None = None
+    relay: str | None = None
     fresh: bool = False
 
 
@@ -919,6 +935,7 @@ def _take_launch_options(
     text: str | None = None
     source: str | None = None
     branch: str | None = None
+    relay: str | None = None
     fresh = False
     kept: list[str] = []
     rest = list(args)
@@ -936,7 +953,12 @@ def _take_launch_options(
                 raise UsageError(f"{NEW_OPTION} takes no value")
             fresh = True
             continue
-        wants = "branch" if name in BRANCH_OPTIONS else "prompt"
+        if name in BRANCH_OPTIONS:
+            wants = "branch"
+        elif name == RELAY_OPTION:
+            wants = "run pointer"
+        else:
+            wants = "prompt"
         if assigned and name.startswith("--"):
             value = inline
         elif rest:
@@ -947,6 +969,11 @@ def _take_launch_options(
             if branch is not None:
                 raise UsageError("a launch works on one branch, not two")
             branch = value
+            continue
+        if name == RELAY_OPTION:
+            if relay is not None:
+                raise UsageError("a launch carries one run pointer, not two")
+            relay = value
             continue
         if text is not None:
             raise UsageError(
@@ -961,7 +988,19 @@ def _take_launch_options(
         text = text.strip()
         if not text:
             raise UsageError(f"{source} gave an empty seed prompt")
-    return LaunchOptions(seed=text, branch=branch, fresh=fresh), kept
+    if relay is not None:
+        if text is not None:
+            raise UsageError(
+                f"{RELAY_OPTION} derives the prompt from the brief it names; "
+                f"{source} would give the executor a second one"
+            )
+        if branch is None:
+            raise UsageError(
+                f"{RELAY_OPTION} needs the branch the handoff names, as -b"
+            )
+    return LaunchOptions(
+        seed=text, branch=branch, relay=relay, fresh=fresh
+    ), kept
 
 
 def _restore_terminal_stdin() -> None:
@@ -980,6 +1019,65 @@ def _restore_terminal_stdin() -> None:
         os.dup2(handle, sys.stdin.fileno())
     finally:
         os.close(handle)
+
+
+def _relay_module():
+    """The relay package, or a refusal naming what is missing.
+
+    `wt` is usable without it: only a launch handoff needs the protocol,
+    and only the protocol's own package should hold protocol knowledge.
+    """
+    try:
+        from relay import handoff
+    except ImportError as error:
+        raise WtError(
+            f"--relay needs the relay package, which is not importable: "
+            f"{error}"
+        ) from error
+    return handoff
+
+
+def relay_brief(
+    workspace: workspaces.Workspace, pointer_text: str, branch: str
+):
+    """Land the run's repository in the workspace and read its brief.
+
+    The clone comes first because the brief is inside it, and the branch is
+    already settled: the launch handoff names it and the workspace was
+    pinned to it before anything was cloned, so this is the bootstrap the
+    protocol prefers over switching a checkout afterwards.
+    """
+    handoff = _relay_module()
+    try:
+        pointer = handoff.parse_pointer(pointer_text)
+        if not handoff.TOKEN.match(branch):
+            raise WtError(
+                f"a launch handoff holds every token to "
+                f"{handoff.TOKEN.pattern}, and this branch does not match: "
+                f"{branch}"
+            )
+        spec = clone.parse(pointer.repository)
+        if clone.into(workspace.path, spec, workspace.config.forge, branch):
+            print(f"cloned   {spec.name}  on {branch}", file=sys.stderr)
+        checkout = workspace.path / spec.owner / spec.repo
+        status, _ = gitcmd.read(checkout, "fetch", "origin")
+        if status != 0:
+            raise WtError(f"cannot fetch origin in {checkout}")
+        brief = handoff.read_brief(checkout, pointer.sha)
+        if brief.branch != branch:
+            # The protocol makes the brief the authority and calls this a
+            # violation to report, not a difference to reconcile.
+            raise WtError(
+                f"the handoff names branch {branch} and the brief at "
+                f"{pointer.sha} says {brief.branch}"
+            )
+    except handoff.RelayError as error:
+        # The relay package raises its own type; a user of `wt` should see
+        # a wt: line and an exit status, not a traceback from a package
+        # they did not invoke.
+        raise WtError(str(error)) from error
+    relative = checkout.relative_to(workspace.path)
+    return brief, pointer, handoff.prompt(brief, pointer, str(relative))
 
 
 def launch(config: Config, agent: str, args: list[str]) -> int:
@@ -1009,6 +1107,18 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
 
     if workspace.create():
         print(f"created  {workspace.path}", file=sys.stderr)
+
+    brief = None
+    if options.relay is not None:
+        brief, pointer, seed = relay_brief(
+            workspace, options.relay, workspace.branch
+        )
+        pool.describe(agent, workspace.name, run=brief.run, turn=brief.claim)
+        print(
+            f"wt: {brief.protocol} run {brief.run}, brief {brief.turn}, "
+            f"claim {brief.claim}, on {brief.branch}",
+            file=sys.stderr,
+        )
 
     resuming = not options.fresh and sessions.resumable(
         workspace.path, agent
@@ -1046,24 +1156,73 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
         _restore_terminal_stdin()
     sys.stdout.flush()
     sys.stderr.flush()
+    # The seed goes last and positional: claude, codex and droid each read a
+    # trailing argument as the prompt to open with, so one launch seeds any
+    # of them without wt knowing one agent's flags from another's. Resuming
+    # is the exception it does have to know.
+    command = [
+        agent,
+        *(sessions.arguments(agent) if resuming else ()),
+        *args[1:],
+        *([seed] if seed else []),
+    ]
     try:
         os.chdir(workspace.path)
-        # The seed goes last and positional: claude, codex and droid each
-        # read a trailing argument as the prompt to open with, so one launch
-        # seeds any of them without wt knowing one agent's flags from
-        # another's. Resuming is the exception it does have to know.
-        os.execvp(
-            agent,
-            [
-                agent,
-                *(sessions.arguments(agent) if resuming else ()),
-                *args[1:],
-                *([seed] if seed else []),
-            ],
-        )
+        if brief is None:
+            os.execvp(agent, command)
+        # A relay turn ends in something the user owes the planner, so this
+        # launch waits for the agent instead of becoming it. Every other one
+        # still execs: an extra process between a terminal and an agent
+        # earns its keep only when there is something to say afterwards.
+        code = _run_agent(command)
     except OSError as error:
         raise WtError(f"cannot start {agent}: {error}") from error
-    return 0  # unreachable: execvp either replaces this process or raises
+    _report_turn(brief)
+    return code
+
+
+def _run_agent(command: list[str]) -> int:
+    """Run the agent to completion, leaving the terminal to it.
+
+    SIGINT is ignored here for the same reason a shell ignores it while a
+    foreground job runs: the key reaches the whole process group, and the
+    agent is the one that should act on it. Without this, Ctrl-C would kill
+    `wt` first and lose the report it exists to make.
+    """
+    import signal
+
+    previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        return subprocess.run(command, check=False).returncode
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
+def _report_turn(brief) -> None:
+    """What the user owes the planner now that the session has ended.
+
+    The acknowledgement goes to stdout alone so it can be copied without
+    the commentary, and it asserts only that the session ended: whether the
+    turn succeeded is in the result file, which the planner reads itself.
+    """
+    if brief is None:
+        return
+    # Interleaved on purpose, so the three lines read in order on a
+    # terminal: our stderr is unbuffered and our stdout is not, and the
+    # acknowledgement would otherwise arrive after the sentence about it.
+    print(
+        f"\nwt: the {brief.protocol} session for run {brief.run} has ended. "
+        f"Tell the planner:",
+        file=sys.stderr,
+    )
+    sys.stderr.flush()
+    print(f"done {brief.run} {brief.claim}")
+    sys.stdout.flush()
+    print(
+        "wt: unless the executor printed a `relay blocked ...` line, in "
+        "which case relay that line verbatim instead.",
+        file=sys.stderr,
+    )
 
 
 Verb = Callable[[Config, list[str]], int]

@@ -301,6 +301,54 @@ resumes nothing.
 flags: `wt claude --new telos/agent-sync -- --resume <id>` picks the session
 yourself, where without `--new` `wt` would add its `--continue` alongside.
 
+### Opening a relay turn in one command
+
+`--relay` is what a [`relay-v6`](relay/PROTOCOL.md) launch handoff invokes. It
+takes a run pointer — the repository, and the commit the brief was published
+in — and needs `-b` for the branch the handoff names:
+
+```sh
+wt claude relay/2026-09-02-01 -b feat/relay --relay spincyc/dotfiles@<40-hex sha>
+```
+
+`wt` creates the workspace pinned to that branch, clones the repository onto
+it, fetches, finds the one brief that commit published, and reads the run, the
+turn, the turn to claim, and the protocol version out of that brief's own
+front matter. It then opens the agent with a prompt saying where the rules
+are, where the brief is, and which turn to claim — and nothing about the work,
+because the brief is the authority for that and a summary would be a second,
+unpinned brief.
+
+Nothing is guessed. A pointer that is not `<owner>/<repo>@<40-hex sha>`, a
+commit that publishes no brief or more than one, a brief whose `protocol:` is
+not the one this build implements, or a `branch:` disagreeing with `-b` all
+stop the launch and say which. That last one is the protocol's rule, not a
+preference: the brief is the authority, and a difference there is a violation
+to report rather than something to reconcile.
+
+Because a relay turn ends in something the user owes the planner, this is the
+one launch `wt` waits for instead of becoming. When the session ends it prints
+the acknowledgement on stdout, by itself so it can be copied:
+
+```
+wt: the relay-v6 session for run 2026-09-02-01 has ended. Tell the planner:
+done 2026-09-02-01 002
+wt: unless the executor printed a `relay blocked ...` line, in which case relay that line verbatim instead.
+```
+
+The next turn is the same command with the next brief's sha. It resumes the
+session already holding the run rather than opening a second one, which is
+what the protocol asks for and, for `codex` and `droid`, is why seeding a
+resumed session is refused — pass `--new` there. `wt agents` names the run and
+turn each worker is on, so several of them are told apart at a glance:
+
+```
+slot 1   agent=claude workspace=relay/2026-09-02-01 run=2026-09-02-01 turn=002 pid=… started=…
+```
+
+`--relay` needs the `relay` package, which the installer links alongside `wt`;
+everything else in `wt` works without it.
+
 Slug components can also group a replay stack. Treat the intermediate path as
 a group and put each replay in its own leaf:
 

@@ -33,11 +33,12 @@ sys.dont_write_bytecode = True
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
-from relay import PROTOCOL_VERSION  # noqa: E402
+from relay import PROTOCOL_URL, PROTOCOL_VERSION  # noqa: E402
 from relay import (  # noqa: E402
     cli,
     errors,
     gitcmd,
+    handoff,
     identity,
     steps,
     turnfile,
@@ -823,6 +824,103 @@ class CommandLineTests(unittest.TestCase):
                 cli.main(["--version"])
         self.assertEqual(raised.exception.code, 0)
         self.assertEqual(out.getvalue(), f"{PROTOCOL_VERSION}\n")
+
+
+class HandoffTests(WithOrigin):
+    """The launch handoff: its pointer, its brief, and its prompt."""
+
+    def publish_brief(self, text: str) -> str:
+        """Commit a brief on the branch and return the commit's sha."""
+        path = self.work / brief_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        self.git(self.work, "add", brief_path())
+        self.git(self.work, "commit", "--quiet", "-m", "brief 001")
+        return self.git(self.work, "rev-parse", "HEAD")
+
+    def valid_brief(self, **overrides: str) -> str:
+        fields = {
+            "protocol": PROTOCOL_VERSION,
+            "run": RUN,
+            "turn": "001",
+            "role": "planner",
+            "agent": "claude-web",
+            "subagents": "0",
+            "branch": BRANCH,
+            "base": "0" * 40,
+        }
+        fields.update(overrides)
+        rendered = "".join(f"{name}: {value}\n" for name, value in fields.items())
+        return f"---\n{rendered}---\n\nObjective: a checkable outcome.\n"
+
+    def test_a_pointer_is_a_repository_and_a_full_sha(self) -> None:
+        pointer = handoff.parse_pointer(f"spincyc/dotfiles@{'a' * 40}")
+        self.assertEqual(pointer.repository, "spincyc/dotfiles")
+        self.assertEqual(pointer.sha, "a" * 40)
+
+    def test_a_pointer_carrying_a_shell_metacharacter_is_refused(self) -> None:
+        # The charset is the whole safety argument for the form: a token
+        # that could reach a shell as anything but a word is not one this
+        # protocol emitted.
+        for spelling in (
+            f"spincyc/dot;rm@{'a' * 40}",
+            f"spincyc/$(id)@{'a' * 40}",
+            f"spincyc/dotfiles@{'a' * 39}",
+            "spincyc/dotfiles",
+            f"dotfiles@{'a' * 40}",
+        ):
+            with self.assertRaises(RelayError):
+                handoff.parse_pointer(spelling)
+
+    def test_the_brief_is_read_from_the_commit_that_published_it(self) -> None:
+        sha = self.publish_brief(self.valid_brief())
+        brief = handoff.read_brief(self.work, sha)
+        self.assertEqual(brief.run, RUN)
+        self.assertEqual(brief.turn, "001")
+        # The claim is the next turn number, still three digits wide.
+        self.assertEqual(brief.claim, "002")
+        self.assertEqual(brief.branch, BRANCH)
+        self.assertEqual(brief.path, brief_path())
+
+    def test_a_commit_publishing_no_brief_is_refused(self) -> None:
+        self.write(self.work, "OTHER.md", "not a brief\n")
+        self.git(self.work, "add", "OTHER.md")
+        self.git(self.work, "commit", "--quiet", "-m", "other")
+        sha = self.git(self.work, "rev-parse", "HEAD")
+        with self.assertRaises(RelayError):
+            handoff.read_brief(self.work, sha)
+
+    def test_a_brief_on_another_protocol_version_stops_the_launch(self) -> None:
+        sha = self.publish_brief(self.valid_brief(protocol="relay-v0"))
+        with self.assertRaises(RelayError) as raised:
+            handoff.read_brief(self.work, sha)
+        self.assertIn("relay-v0", str(raised.exception))
+
+    def test_front_matter_and_path_must_agree_about_the_run(self) -> None:
+        sha = self.publish_brief(self.valid_brief(run="2026-01-01-09"))
+        with self.assertRaises(RelayError):
+            handoff.read_brief(self.work, sha)
+
+    def test_the_prompt_points_at_the_brief_and_repeats_none_of_it(self) -> None:
+        sha = self.publish_brief(self.valid_brief())
+        brief = handoff.read_brief(self.work, sha)
+        pointer = handoff.parse_pointer(f"spincyc/dotfiles@{sha}")
+        text = handoff.prompt(brief, pointer, "spincyc/dotfiles")
+        self.assertIn(PROTOCOL_URL, text)
+        self.assertIn(f"git show {sha}:{brief_path()}", text)
+        self.assertIn("claim turn 002", text)
+        # The brief is the authority; a launcher that summarised it would
+        # be a second, unpinned brief.
+        self.assertNotIn("checkable outcome", text)
+
+
+class PublishedUrlTests(unittest.TestCase):
+    """The URL the package hands out is the one the document publishes."""
+
+    def test_the_url_names_this_version_and_the_document_agrees(self) -> None:
+        self.assertIn(PROTOCOL_VERSION, PROTOCOL_URL)
+        document = (REPO_ROOT / "relay" / "PROTOCOL.md").read_text()
+        self.assertIn(PROTOCOL_URL, document)
 
 
 if __name__ == "__main__":
