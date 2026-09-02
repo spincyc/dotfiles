@@ -14,7 +14,9 @@ when an agent finishes, blocks, or reveals follow-up work:
 5. Collect, review, and integrate completed results; refill useful capacity.
 
 - Keep the coordinator advancing integration or a nonconflicting lane.
-- Give mutating lanes exclusive ownership of files and mutable resources.
+- Give every lane exclusive ownership of the files and mutable resources it
+  writes, its scratch area included. Read-only describes a lane's posture
+  toward the subject under inspection, never toward its own working files.
   Prefer read-only delegates when inspection overlaps.
 - Do not manufacture work, split indivisible tasks, duplicate effort without a
   review purpose, or spend more coordination than delegation saves.
@@ -39,6 +41,11 @@ when the delegate has read nothing beyond the brief and the always-loaded
 documents. Each brief states:
 
 - The deliverable and the exclusive resource boundary.
+- A scratch directory belonging to that lane alone, named in the brief. Every
+  concurrent delegate otherwise inherits the same default working area, so an
+  unnamed scratch directory is a shared one: siblings overwrite each other's
+  files under the plausible names each would pick anyway, and nothing reports
+  the loss.
 - The delegate's journal posture, explicitly: the delegate does not ingest,
   claim, or apply anything in the work ledger; the coordinator owns all
   ledger writes.
