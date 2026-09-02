@@ -214,9 +214,11 @@ EOF
 # A stand-in agent that records where it was launched and what it received.
 cat >"$fake_bin/fake-agent" <<'EOF'
 #!/bin/sh
-printf 'agent=%s cwd=%s slot=%s workspace=%s dir=%s branch=%s aiq_disable=%s args=%s\n' \
+printf 'agent=%s cwd=%s slot=%s workspace=%s dir=%s branch=%s aiq_disable=%s' \
   "$(basename -- "$0")" "$(pwd -P)" "${WT_AGENT_SLOT:-}" "${WT_WORKSPACE:-}" \
-  "${WT_WORKSPACE_DIR:-}" "${WT_BRANCH:-}" "${AIQ_DISABLE:-unset}" "$*"
+  "${WT_WORKSPACE_DIR:-}" "${WT_BRANCH:-}" "${AIQ_DISABLE:-unset}"
+printf ' searches=%s args=%s\n' \
+  "${CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION:-unset}" "$*"
 EOF
 chmod 755 -- "$fake_bin/fake-agent"
 
@@ -742,6 +744,17 @@ assert_contains "$(wt_run telos/demo 2>/dev/null)" 'agent=fake-agent'
 
 printf '# the launched agent keeps no work ledger\n'
 assert_contains "$launch_out" 'aiq_disable=1'
+
+printf '# claude is launched with a raised web search budget\n'
+assert_contains "$named_out" 'searches=1000'
+# A preference, not a fact about the workspace: a caller who already chose a
+# value keeps it, or wt would silently overrule the person it launches for.
+assert_contains \
+  "$(CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION=7 wt_run claude telos/demo \
+    2>/dev/null)" \
+  'searches=7'
+# The variable is Claude Code's, so promising it to the others would be noise.
+assert_contains "$(wt_run codex telos/demo 2>/dev/null)" 'searches=unset'
 
 # The stand-in agent has no resume spelling, so these read the seed alone.
 printf '# a seed prompt opens the agent, after the agent arguments\n'

@@ -678,7 +678,7 @@ Bare `owner/repo` clones go through `gh` when it is installed, so private
 repositories need no separate credential setup; explicit URLs and local
 paths always go through `git clone`.
 
-Five variables go the other way, exported into the agent `wt` launches and
+Six variables go the other way, exported into the agent `wt` launches and
 into nothing else — a shell you opened yourself has none of them:
 
 | Variable | Value |
@@ -688,6 +688,17 @@ into nothing else — a shell you opened yourself has none of them:
 | `WT_BRANCH` | The workspace branch, for `git push -u origin "$WT_BRANCH"` |
 | `WT_AGENT_SLOT` | Which agent slot this session holds |
 | `AIQ_DISABLE` | Set to `1`: a workspace keeps no work ledger |
+| `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` | Set to `1000` for `claude` |
+
+The last one is the only one that defers to you. Claude Code stops searching
+the web after 200 calls in a session and tells the agent to have the ceiling
+raised; a workspace is where the long research runs happen, so `wt` raises it
+before the session starts rather than stranding one already deep in a run. It
+is a preference rather than a fact about the workspace, so a value you export
+yourself is left alone, and it means nothing to `codex` or `droid`, which are
+not given it. The default it overrides is Claude Code's own and undocumented:
+if a future release changes or drops the variable, this becomes a no-op rather
+than a breakage.
 
 The package needs Python 3.11 or newer (`enum.StrEnum`).
 

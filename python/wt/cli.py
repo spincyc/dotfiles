@@ -9,7 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -975,8 +975,17 @@ def cmd_rm(config: Config, args: list[str]) -> int:
     return 0
 
 
+# Claude Code stops searching the web partway through a session and tells the
+# agent to ask for this to be raised; its own default is 200.
+WEB_SEARCH_BUDGET_VAR = "CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION"
+WEB_SEARCH_BUDGET = "1000"
+
+
 def agent_environment(
-    workspace: workspaces.Workspace, slot: int
+    workspace: workspaces.Workspace,
+    slot: int,
+    agent: str | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """What `wt` promises an agent it will find in its environment.
 
@@ -984,7 +993,8 @@ def agent_environment(
     guidance and the personal AI guidance both key on WT_WORKSPACE, so the
     contract belongs somewhere a test or another script can read it.
     """
-    return {
+    ambient = os.environ if environ is None else environ
+    promised = {
         "WT_WORKSPACE": workspace.name,
         "WT_WORKSPACE_DIR": str(workspace.path),
         "WT_BRANCH": workspace.branch,
@@ -994,6 +1004,14 @@ def agent_environment(
         # capture every prompt of a session that is meant to be disposable.
         "AIQ_DISABLE": "1",
     }
+    # A workspace is where the long research runs happen, so raise the search
+    # ceiling up front rather than stranding a session already deep in one.
+    # This one is a preference and not a fact about the workspace like the
+    # five above, so a value the caller already set wins; and it means
+    # nothing to codex or droid, so only claude is promised it.
+    if agent == "claude" and WEB_SEARCH_BUDGET_VAR not in ambient:
+        promised[WEB_SEARCH_BUDGET_VAR] = WEB_SEARCH_BUDGET
+    return promised
 
 
 SEED_OPTIONS = ("--seed", "--seed-file")
@@ -1412,7 +1430,7 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
     # agent may well have written a session before it did.
     sessions.record(workspace.path, agent)
 
-    os.environ.update(agent_environment(workspace, slot))
+    os.environ.update(agent_environment(workspace, slot, agent))
     print(
         f"wt: {agent} in {workspace.path} on {workspace.branch} "
         f"(slot {slot})",
