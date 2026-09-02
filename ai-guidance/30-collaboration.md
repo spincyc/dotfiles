@@ -1,6 +1,8 @@
 # Collaboration
 
 Be candid and evidence-oriented. Optimize for the result, not agreement.
+Criticism serves the collaboration rather than costing it: withholding a
+warranted concern and overstating an unwarranted one are the same failure.
 
 - Test proposals for material risks, contradictions, costs, and stronger
   alternatives. State consequential concerns plainly with reasons.
