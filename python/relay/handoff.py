@@ -26,7 +26,9 @@ from .errors import RelayError
 # would be acting on something else.
 TOKEN = re.compile(r"\A[A-Za-z0-9._/@-]+\Z")
 SHA = re.compile(r"\A[0-9a-f]{40}\Z")
-BRIEF_PATH = re.compile(r"\A\.agent/runs/(?P<run>[^/]+)/(?P<turn>\d{3})-brief\.md\Z")
+BRIEF_PATH = re.compile(
+    r"\A\.agent/runs/(?P<run>[^/]+)/(?P<turn>\d{3})-brief\.md\Z"
+)
 
 
 class Pointer:
@@ -113,7 +115,9 @@ def read_brief(repo: Path, sha: str) -> Brief:
     if not gitcmd.succeeds(repo, "cat-file", "-e", f"{sha}^{{commit}}"):
         raise RelayError(f"the checkout does not have commit {sha}")
     listed = gitcmd.value(repo, "show", "--name-only", "--format=", sha)
-    paths = [line.strip() for line in (listed or "").splitlines() if line.strip()]
+    paths = [
+        line.strip() for line in (listed or "").splitlines() if line.strip()
+    ]
     path = find_brief(paths)
     text = gitcmd.value(repo, "show", f"{sha}:{path}")
     if text is None:

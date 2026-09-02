@@ -378,7 +378,8 @@ printf '# a workspace can be pinned to a branch it did not derive\n'
 # A relay run works on the branch the planner named, which no slug derives.
 pinned_out=$(wt_run new -b relay/run-01 telos/pinned 2>&1)
 assert_contains "$pinned_out" 'branch relay/run-01'
-assert_contains "$(cat "$work/telos/pinned/.wt-workspace")" 'branch: relay/run-01'
+assert_contains "$(cat "$work/telos/pinned/.wt-workspace")" \
+  'branch: relay/run-01'
 assert_contains "$(wt_run branch telos/pinned)" 'relay/run-01'
 grep -Fq 'relay/run-01' "$work/telos/pinned/AGENTS.md" ||
   fail "the workspace guidance names the derived branch, not the pinned one"
@@ -631,7 +632,8 @@ assert_contains \
 
 printf '# a seed prompt comes from stdin, under $WT_AGENT\n'
 # The trailing newline a heredoc leaves is not part of the prompt.
-stdin_out=$(printf 'from stdin\n' | wt_run --seed-file - telos/demo 2>/dev/null)
+stdin_out=$(printf 'from stdin\n' |
+  wt_run --seed-file - telos/demo 2>/dev/null)
 assert_contains "$stdin_out" 'agent=fake-agent'
 assert_contains "$stdin_out" 'args=from stdin'
 
@@ -747,7 +749,10 @@ base: 0000000000000000000000000000000000000000
 
 Objective: the executor lands on this brief and no other.
 BRIEF
-relay_version=$(python3 -c 'import sys; sys.path.insert(0, "python"); import relay; print(relay.PROTOCOL_VERSION)')
+relay_version=$(python3 -c 'import sys
+sys.path.insert(0, "python")
+import relay
+print(relay.PROTOCOL_VERSION)')
 sed -i "s/RELAY_VERSION/$relay_version/" \
   "$relay_seed/.agent/runs/2026-09-02-01/001-brief.md"
 git -C "$relay_seed" add .agent
@@ -761,7 +766,8 @@ assert_contains "$relay_out" "$relay_version run 2026-09-02-01, brief 001"
 assert_contains "$relay_out" 'claim 002, on feat/relay'
 # The prompt names the document, the brief, and the turn to claim, and
 # nothing about the work: the brief is the authority for that.
-assert_contains "$relay_out" "$relay_sha:.agent/runs/2026-09-02-01/001-brief.md"
+assert_contains "$relay_out" \
+  "$relay_sha:.agent/runs/2026-09-02-01/001-brief.md"
 assert_contains "$relay_out" 'claim turn 002'
 assert_contains "$relay_out" '/relay/PROTOCOL.md'
 if printf '%s\n' "$relay_out" | grep -Fq 'no other'; then
@@ -769,7 +775,8 @@ if printf '%s\n' "$relay_out" | grep -Fq 'no other'; then
 fi
 # The clone is on the branch the handoff named, not on one derived from the
 # workspace name, which is what keeps status, push and check meaningful.
-[ "$(branch_of "$work/relay/2026-09-02-01/spincyc/relayed")" = "feat/relay" ] ||
+relay_clone="$work/relay/2026-09-02-01/spincyc/relayed"
+[ "$(branch_of "$relay_clone")" = "feat/relay" ] ||
   fail "the relay clone is not on the handoff branch"
 
 printf '# a relay launch waits, then says what the planner is owed\n'
@@ -805,8 +812,9 @@ if both=$(wt_run claude relay/bad -b feat/relay --seed mine \
   fail "a launch handoff and a seed prompt were accepted together"
 fi
 assert_contains "$both" 'would give the executor a second one'
+relay_parent=$(git -C "$relay_seed" rev-parse HEAD~1)
 if plain_commit=$(wt_run claude relay/plain -b main \
-  --relay "spincyc/relayed@$(git -C "$relay_seed" rev-parse HEAD~1)" 2>&1); then
+  --relay "spincyc/relayed@$relay_parent" 2>&1); then
   fail "a commit publishing no brief was accepted"
 fi
 assert_contains "$plain_commit" 'publishes no brief'

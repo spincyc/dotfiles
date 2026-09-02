@@ -850,7 +850,9 @@ class HandoffTests(WithOrigin):
             "base": "0" * 40,
         }
         fields.update(overrides)
-        rendered = "".join(f"{name}: {value}\n" for name, value in fields.items())
+        rendered = "".join(
+            f"{name}: {value}\n" for name, value in fields.items()
+        )
         return f"---\n{rendered}---\n\nObjective: a checkable outcome.\n"
 
     def test_a_pointer_is_a_repository_and_a_full_sha(self) -> None:
@@ -890,7 +892,7 @@ class HandoffTests(WithOrigin):
         with self.assertRaises(RelayError):
             handoff.read_brief(self.work, sha)
 
-    def test_a_brief_on_another_protocol_version_stops_the_launch(self) -> None:
+    def test_a_brief_on_another_version_stops_the_launch(self) -> None:
         sha = self.publish_brief(self.valid_brief(protocol="relay-v0"))
         with self.assertRaises(RelayError) as raised:
             handoff.read_brief(self.work, sha)
@@ -901,7 +903,7 @@ class HandoffTests(WithOrigin):
         with self.assertRaises(RelayError):
             handoff.read_brief(self.work, sha)
 
-    def test_the_prompt_points_at_the_brief_and_repeats_none_of_it(self) -> None:
+    def test_the_prompt_points_at_the_brief_and_repeats_none(self) -> None:
         sha = self.publish_brief(self.valid_brief())
         brief = handoff.read_brief(self.work, sha)
         pointer = handoff.parse_pointer(f"spincyc/dotfiles@{sha}")
