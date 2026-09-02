@@ -17,6 +17,7 @@ from . import checks, clone, gitcmd, repos, sessions, slots, workspaces
 from .config import KNOWN_AGENTS, Config
 from .errors import (
     PartlyRemoved,
+    RelayBlocked,
     RemovalRefused,
     UnsavedWorkError,
     UsageError,
@@ -45,9 +46,9 @@ Launch:
                                   stdin when <path> is -, so that generated
                                   text never passes through shell quoting
   --relay <owner>/<repo>@<sha>    Open an agent on the relay brief that
-                                  commit published: clone the repository
-                                  onto the -b branch, read the brief there,
-                                  and derive the prompt from it
+                                  commit published: clone onto the -b
+                                  branch, preflight and claim the turn, and
+                                  hand over the brief and the commands
 
 These are wt's own and may be typed either side of the workspace; -- ends them
 and hands everything after it to the agent untouched. A launch continues the
@@ -57,10 +58,13 @@ always fresh. Only claude can be resumed and seeded at once, since codex and
 droid both read a trailing prompt as the session to resume. Use --new when
 driving the agent's own session flags yourself.
 
---relay is what a relay-v6 launch handoff invokes. It needs -b, it derives
-everything else from the brief's front matter at the pinned commit, and it
-waits for the agent rather than becoming it, so that when the session ends it
-can print the acknowledgement the run owes its planner.
+--relay is what a relay-v6 launch handoff invokes. It needs -b and derives
+everything else from the brief's front matter at the pinned commit. It then
+performs the protocol's steps before the work -- initialization, preflight and
+the claim -- rather than describing them to the agent, and a stop prints its
+blocked-channel line and exits 3 before any session opens. It waits for the
+agent rather than becoming it, so that when the session ends it can say
+whether the result reached origin and print what the run owes its planner.
 
 A workspace is a leaf named <project>/<slug>[/<child>...]. Intermediate
 components group a stack of workspaces. Every repository in a leaf works on
@@ -1022,33 +1026,71 @@ def _restore_terminal_stdin() -> None:
         os.close(handle)
 
 
-def _relay_module():
+def _relay_modules():
     """The relay package, or a refusal naming what is missing.
 
     `wt` is usable without it: only a launch handoff needs the protocol,
     and only the protocol's own package should hold protocol knowledge.
     """
     try:
-        from relay import handoff
+        from relay import handoff, steps
+        from relay.errors import Blocked, RelayError
     except ImportError as error:
         raise WtError(
             f"--relay needs the relay package, which is not importable: "
             f"{error}"
         ) from error
-    return handoff
+    return handoff, steps, Blocked, RelayError
 
 
-def relay_brief(
-    workspace: workspaces.Workspace, pointer_text: str, branch: str
-):
-    """Land the run's repository in the workspace and read its brief.
+def _fast_forward(checkout: Path, branch: str) -> None:
+    """Catch a checkout up to origin when that is all it needs.
+
+    Strictly behind and nothing of its own: no merge is created, no commit
+    is rewritten, and nothing is decided. Anything else is left exactly as
+    it is for preflight to stop on.
+    """
+    remote = f"origin/{branch}"
+    ancestor = ("merge-base", "--is-ancestor")
+    ahead = gitcmd.read(checkout, *ancestor, remote, "HEAD")
+    behind = gitcmd.read(checkout, *ancestor, "HEAD", remote)
+    if ahead[0] == 0 or behind[0] != 0:
+        return
+    status, output = gitcmd.read(checkout, "merge", remote, "--ff-only")
+    if status != 0:
+        raise WtError(f"cannot fast-forward to {remote}: {output}")
+    print(f"synced   fast-forwarded to {remote}", file=sys.stderr)
+
+
+@dataclass(frozen=True)
+class RelayTurn:
+    """A claimed relay turn, and the prompt that executes it."""
+
+    brief: object
+    checkout: Path
+    prompt: str
+
+
+def open_relay_turn(
+    workspace: workspaces.Workspace,
+    pointer_text: str,
+    branch: str,
+    agent: str,
+) -> RelayTurn:
+    """Do every mechanical step of the turn, and leave only the work.
 
     The clone comes first because the brief is inside it, and the branch is
-    already settled: the launch handoff names it and the workspace was
-    pinned to it before anything was cloned, so this is the bootstrap the
-    protocol prefers over switching a checkout afterwards.
+    already settled: the handoff names it and the workspace was pinned to
+    it before anything was cloned, which is the bootstrap the protocol
+    prefers over switching a checkout afterwards. Initialization, preflight
+    and the claim then run here rather than being described to an agent —
+    they are decidable without judgement, and a step an executor has to
+    reconstruct from prose is the step that gets improvised. A stop is
+    reported before any session starts, so a failed preflight costs nothing
+    but the time to discover it.
     """
-    handoff = _relay_module()
+    handoff, steps, Blocked, RelayError = _relay_modules()
+    brief = None
     try:
         pointer = handoff.parse_pointer(pointer_text)
         if not handoff.TOKEN.match(branch):
@@ -1072,13 +1114,56 @@ def relay_brief(
                 f"the handoff names branch {branch} and the brief at "
                 f"{pointer.sha} says {brief.branch}"
             )
-    except handoff.RelayError as error:
+        steps.initialize(checkout, pointer.repository, branch)
+        # Preflight stops on a stale base and says to fast-forward when that
+        # is all it is, because divergence found before a turn's work costs
+        # nothing and the same divergence found after it is a rebase with
+        # conflict risk. `relay preflight` reports rather than mutates, so
+        # the pure fast-forward is taken here — and only that one: a branch
+        # that has really diverged before any work began is the stop the
+        # protocol wants, not something to reconcile.
+        _fast_forward(checkout, branch)
+        steps.preflight(checkout, pointer.repository, branch, pointer.sha)
+        # Asked before claiming, because a claim already at origin is the
+        # protocol's proof that the turn is owned, and the local file that
+        # came down with the fetch would otherwise stop the run as an
+        # ordinary refusal rather than as the token the planner needs.
+        owned = f"origin/{branch}:{steps.claim_path(brief.run, brief.claim)}"
+        if gitcmd.read(checkout, "cat-file", "-e", owned)[0] == 0:
+            raise Blocked(
+                "claim-replay",
+                f"{steps.claim_path(brief.run, brief.claim)} is already at "
+                f"origin, so turn {brief.claim} is owned; report the replay "
+                f"and do not redo the work",
+            )
+        claimed = steps.claim(
+            checkout, brief.run, brief.claim, branch, agent
+        )
+    except Blocked as error:
+        raise RelayBlocked(
+            brief.run if brief else "?",
+            brief.claim if brief else "?",
+            error.token,
+            error.message,
+            relayed=error.relayed,
+        ) from error
+    except RelayError as error:
         # The relay package raises its own type; a user of `wt` should see
         # a wt: line and an exit status, not a traceback from a package
         # they did not invoke.
         raise WtError(str(error)) from error
+    print(f"claimed  {claimed.path}", file=sys.stderr)
     relative = checkout.relative_to(workspace.path)
-    return brief, pointer, handoff.prompt(brief, pointer, str(relative))
+    return RelayTurn(
+        brief=brief,
+        checkout=checkout,
+        prompt=handoff.prompt(
+            brief,
+            pointer,
+            str(relative),
+            tool=shutil.which("relay") is not None,
+        ),
+    )
 
 
 def launch(config: Config, agent: str, args: list[str]) -> int:
@@ -1109,11 +1194,12 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
     if workspace.create():
         print(f"created  {workspace.path}", file=sys.stderr)
 
-    brief = None
+    turn = None
     if options.relay is not None:
-        brief, pointer, seed = relay_brief(
-            workspace, options.relay, workspace.branch
+        turn = open_relay_turn(
+            workspace, options.relay, workspace.branch, agent
         )
+        brief, seed = turn.brief, turn.prompt
         pool.describe(agent, workspace.name, run=brief.run, turn=brief.claim)
         print(
             f"wt: {brief.protocol} run {brief.run}, brief {brief.turn}, "
@@ -1169,7 +1255,7 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
     ]
     try:
         os.chdir(workspace.path)
-        if brief is None:
+        if turn is None:
             os.execvp(agent, command)
         # A relay turn ends in something the user owes the planner, so this
         # launch waits for the agent instead of becoming it. Every other one
@@ -1178,7 +1264,7 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
         code = _run_agent(command)
     except OSError as error:
         raise WtError(f"cannot start {agent}: {error}") from error
-    _report_turn(brief)
+    _report_turn(turn)
     return code
 
 
@@ -1199,31 +1285,51 @@ def _run_agent(command: list[str]) -> int:
         signal.signal(signal.SIGINT, previous)
 
 
-def _report_turn(brief) -> None:
+def _published(turn: RelayTurn) -> bool:
+    """Whether this turn's result actually reached origin.
+
+    Asked rather than assumed. The protocol has the planner read the result
+    file itself and never infer an outcome from silence, so this decides
+    only what to tell the user to expect — but "no result was published" is
+    a fact worth having before the planner asks for it.
+    """
+    gitcmd.read(turn.checkout, "fetch", "origin")
+    reference = f"origin/{turn.brief.branch}:{turn.brief.result_path}"
+    status, _ = gitcmd.read(turn.checkout, "cat-file", "-e", reference)
+    return status == 0
+
+
+def _report_turn(turn: RelayTurn | None) -> None:
     """What the user owes the planner now that the session has ended.
 
     The acknowledgement goes to stdout alone so it can be copied without
     the commentary, and it asserts only that the session ended: whether the
     turn succeeded is in the result file, which the planner reads itself.
     """
-    if brief is None:
+    if turn is None:
         return
-    # Interleaved on purpose, so the three lines read in order on a
-    # terminal: our stderr is unbuffered and our stdout is not, and the
-    # acknowledgement would otherwise arrive after the sentence about it.
+    brief = turn.brief
+    landed = _published(turn)
+    # Interleaved on purpose, so the lines read in order on a terminal: our
+    # stderr is unbuffered and our stdout is not, and the acknowledgement
+    # would otherwise arrive after the sentence about it.
     print(
-        f"\nwt: the {brief.protocol} session for run {brief.run} has ended. "
-        f"Tell the planner:",
+        f"\nwt: the {brief.protocol} session for run {brief.run} has ended, "
+        f"and {brief.result_path} "
+        + ("is at origin. " if landed else "is NOT at origin. ")
+        + "Tell the planner:",
         file=sys.stderr,
     )
     sys.stderr.flush()
     print(f"done {brief.run} {brief.claim}")
     sys.stdout.flush()
-    print(
-        "wt: unless the executor printed a `relay blocked ...` line, in "
-        "which case relay that line verbatim instead.",
-        file=sys.stderr,
-    )
+    if not landed:
+        print(
+            "wt: the turn published nothing, so the planner will ask for "
+            "the executor's `relay blocked ...` line; relay that verbatim "
+            "instead if there was one.",
+            file=sys.stderr,
+        )
 
 
 Verb = Callable[[Config, list[str]], int]
@@ -1297,6 +1403,18 @@ def main(argv: list[str] | None = None, config: Config | None = None) -> int:
     except UsageError as error:
         print(f"wt: {error.message}", file=sys.stderr)
         print(USAGE, file=sys.stderr)
+        return error.exit_code
+    except RelayBlocked as error:
+        # Exactly one line on stdout, because that line is the whole of
+        # what the user is permitted to carry back. A stop the protocol's
+        # blocked channel does not name is spelled differently on purpose,
+        # so it is never relayed as one of its tokens.
+        if error.relayed:
+            print(error.line)
+        else:
+            print(f"wt: stopped: {error.token}", file=sys.stderr)
+        sys.stdout.flush()
+        print(f"wt: {error.message}", file=sys.stderr)
         return error.exit_code
     except WtError as error:
         print(f"wt: {error.message}", file=sys.stderr)

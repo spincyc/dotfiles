@@ -903,17 +903,45 @@ class HandoffTests(WithOrigin):
         with self.assertRaises(RelayError):
             handoff.read_brief(self.work, sha)
 
-    def test_the_prompt_points_at_the_brief_and_repeats_none(self) -> None:
+    def test_the_prompt_carries_the_brief_and_the_exact_commands(
+        self,
+    ) -> None:
         sha = self.publish_brief(self.valid_brief())
         brief = handoff.read_brief(self.work, sha)
         pointer = handoff.parse_pointer(f"spincyc/dotfiles@{sha}")
         text = handoff.prompt(brief, pointer, "spincyc/dotfiles")
         self.assertIn(PROTOCOL_URL, text)
-        self.assertIn(f"git show {sha}:{brief_path()}", text)
-        self.assertIn("claim turn 002", text)
-        # The brief is the authority; a launcher that summarised it would
-        # be a second, unpinned brief.
-        self.assertNotIn("checkable outcome", text)
+        # The brief arrives verbatim rather than as somewhere to look it
+        # up: a launcher that summarised it would be a second, unpinned
+        # brief, and one that described the lookup would be prose to
+        # improvise.
+        self.assertIn("Objective: a checkable outcome.", text)
+        self.assertIn(f"pinned at {sha}", text)
+        # Every mechanical step is either already done or an exact command.
+        self.assertIn("is claimed and published", text)
+        self.assertIn(f"relay prepare --protocol {PROTOCOL_VERSION}", text)
+        self.assertIn(f"--brief {sha} --brief-path {brief_path()}", text)
+        self.assertIn(f"relay publish --protocol {PROTOCOL_VERSION}", text)
+        self.assertIn(f"--result {brief.result_path}", text)
+        self.assertIn(f"relay blocked {RUN} 002 <token>", text)
+
+    def test_without_the_tool_the_prompt_names_the_sections(self) -> None:
+        # Its absence is not a blocker, and naming the sections beats
+        # paraphrasing them: the paraphrase is what drifts.
+        sha = self.publish_brief(self.valid_brief())
+        brief = handoff.read_brief(self.work, sha)
+        pointer = handoff.parse_pointer(f"spincyc/dotfiles@{sha}")
+        text = handoff.prompt(brief, pointer, "spincyc/dotfiles", tool=False)
+        self.assertIn("Final sync and Executor rules", text)
+        self.assertIn(brief.result_path, text)
+        self.assertNotIn("relay prepare", text)
+
+    def test_the_result_path_follows_the_claim(self) -> None:
+        sha = self.publish_brief(self.valid_brief())
+        brief = handoff.read_brief(self.work, sha)
+        self.assertEqual(
+            brief.result_path, f".agent/runs/{RUN}/002-result.md"
+        )
 
 
 class PublishedUrlTests(unittest.TestCase):

@@ -314,10 +314,26 @@ wt claude relay/2026-09-02-01 -b feat/relay --relay spincyc/dotfiles@<40-hex sha
 `wt` creates the workspace pinned to that branch, clones the repository onto
 it, fetches, finds the one brief that commit published, and reads the run, the
 turn, the turn to claim, and the protocol version out of that brief's own
-front matter. It then opens the agent with a prompt saying where the rules
-are, where the brief is, and which turn to claim — and nothing about the work,
-because the brief is the authority for that and a summary would be a second,
-unpinned brief.
+front matter.
+
+It then **performs** the steps the protocol puts before the work rather than
+describing them: workspace initialization, the pure fast-forward preflight
+step 7 names, preflight itself, and the claim — which reaches `origin` before
+any session starts. What the agent is finally handed is the brief at its
+pinned bytes and the exact commands that publish the turn:
+
+```
+Everything the protocol puts before the work is done: the checkout is
+initialized on feat/relay, preflight passed, and turn 002 is claimed and
+published. Do not repeat any of it…
+
+  relay prepare --protocol relay-v6 --branch feat/relay \
+      --brief <sha> --brief-path .agent/runs/2026-09-02-01/001-brief.md
+```
+
+That is the point of the form. A step described in prose is a step the agent
+reconstructs, and a reconstructed step is where a run improvises; the brief is
+the only thing left for it to read, and `wt` never summarises that.
 
 Nothing is guessed. A pointer that is not `<owner>/<repo>@<40-hex sha>`, a
 commit that publishes no brief or more than one, a brief whose `protocol:` is
@@ -326,15 +342,28 @@ stop the launch and say which. That last one is the protocol's rule, not a
 preference: the brief is the authority, and a difference there is a violation
 to report rather than something to reconcile.
 
-Because a relay turn ends in something the user owes the planner, this is the
-one launch `wt` waits for instead of becoming. When the session ends it prints
-the acknowledgement on stdout, by itself so it can be copied:
+A stop the protocol names prints its blocked-channel line on stdout and exits
+`3`, **before any agent session is opened** — a failed preflight or a replayed
+claim used to cost a whole session to discover:
 
 ```
-wt: the relay-v6 session for run 2026-09-02-01 has ended. Tell the planner:
-done 2026-09-02-01 002
-wt: unless the executor printed a `relay blocked ...` line, in which case relay that line verbatim instead.
+relay blocked 2026-09-02-01 002 claim-replay
 ```
+
+Because a relay turn ends in something the user owes the planner, this is the
+one launch `wt` waits for instead of becoming. When the session ends it checks
+whether the result actually reached `origin` and prints the acknowledgement on
+stdout, by itself so it can be copied:
+
+```
+wt: the relay-v6 session for run 2026-09-02-01 has ended, and .agent/runs/2026-09-02-01/002-result.md is at origin. Tell the planner:
+done 2026-09-02-01 002
+```
+
+The acknowledgement still asserts only that the session ended — the planner
+reads the result file itself and never infers an outcome. Saying whether the
+file is there is for you, so you know before the planner asks whether to
+expect a `relay blocked …` line instead.
 
 The next turn is the same command with the next brief's sha. It resumes the
 session already holding the run rather than opening a second one, which is
@@ -562,7 +591,8 @@ an unreadable registry is not an empty one.
 
 The exit statuses are the ordinary ones: 2 for a usage error, 1 for a
 failure, 130 for an interrupt, and 141 for a closed pipe, so `wt ls | head`
-stays quiet.
+stays quiet. A relay launch adds 3, for a stop the protocol's blocked channel
+names, matching `relay`'s own code for it.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

@@ -63,7 +63,15 @@ def parse_pointer(value: str) -> Pointer:
 class Brief:
     """What the brief at a pinned commit says about its own run."""
 
-    __slots__ = ("path", "run", "turn", "claim", "branch", "protocol")
+    __slots__ = (
+        "path",
+        "run",
+        "turn",
+        "claim",
+        "branch",
+        "protocol",
+        "body",
+    )
 
     def __init__(
         self,
@@ -73,6 +81,7 @@ class Brief:
         claim: str,
         branch: str,
         protocol: str,
+        body: str = "",
     ) -> None:
         self.path = path
         self.run = run
@@ -80,6 +89,12 @@ class Brief:
         self.claim = claim
         self.branch = branch
         self.protocol = protocol
+        self.body = body
+
+    @property
+    def result_path(self) -> str:
+        """Where this turn's result belongs, by the protocol's layout."""
+        return f".agent/runs/{self.run}/{self.claim}-result.md"
 
 
 def find_brief(paths: list[str]) -> str:
@@ -122,7 +137,7 @@ def read_brief(repo: Path, sha: str) -> Brief:
     text = gitcmd.value(repo, "show", f"{sha}:{path}")
     if text is None:
         raise RelayError(f"cannot read {path} at {sha}")
-    fields, _, problems = turnfile.parse(text)
+    fields, body, problems = turnfile.parse(text)
     if problems:
         location, message = problems[0]
         raise RelayError(f"{path} is not a turn file: {location}: {message}")
@@ -163,27 +178,81 @@ def read_brief(repo: Path, sha: str) -> Brief:
         claim=f"{int(found['turn']) + 1:03d}",
         branch=found["branch"],
         protocol=found["protocol"],
+        body=body.strip(),
     )
 
 
-def prompt(brief: Brief, pointer: Pointer, clone: str) -> str:
+def publish_commands(brief: Brief, pointer: Pointer, tool: bool) -> str:
+    """The exact way this turn is published, with every value filled in.
+
+    Two commands and the file between them. `relay prepare` must run after
+    the work is committed and before the result is written, because the
+    shas it prints are the ones the result records and a sync would destroy
+    an earlier reading of them; `relay publish` commits and pushes the
+    result and the work together.
+    """
+    if not tool:
+        # The protocol's steps are normative and executable by hand, and a
+        # missing accelerator is not a blocker. Naming the sections beats
+        # paraphrasing them: the paraphrase is what drifts.
+        return (
+            f"The `relay` command is not installed here, so follow Final "
+            f"sync and Executor rules in the protocol by hand, write "
+            f"{brief.result_path}, and push the work and the result "
+            f"together. Say in the result that you did the steps by hand."
+        )
+    return (
+        f"  relay prepare --protocol {brief.protocol} "
+        f"--branch {brief.branch} \\\n"
+        f"      --brief {pointer.sha} --brief-path {brief.path}\n"
+        f"\n"
+        f"Write {brief.result_path} from relay/templates/result.md in the "
+        f"repository publishing this protocol, recording the base= and "
+        f"work= values prepare printed. Then:\n"
+        f"\n"
+        f"  relay publish --protocol {brief.protocol} "
+        f"--branch {brief.branch} \\\n"
+        f"      --result {brief.result_path}"
+    )
+
+
+def prompt(
+    brief: Brief, pointer: Pointer, clone: str, tool: bool = True
+) -> str:
     """What to open the executor with, for the brief at that commit.
 
-    It says where the rules are, where the brief is, and which turn to
-    claim, and nothing about the work: the brief is the authority for that,
-    and a launcher that summarised it would be a second, unpinned brief.
+    Every mechanical step is either already done or spelled as an exact
+    command: what is left is the work, which is the brief's to say and
+    nothing here summarises. Prose that an executor has to turn back into
+    commands is the part that gets improvised, so there is none of it.
     """
     return (
-        f"You are the executor in a {brief.protocol} run. Read "
-        f"{PROTOCOL_URL} completely before acting; it is self-sufficient "
-        f"and it governs over anything below.\n"
+        f"You are the executor in a {brief.protocol} run, in this "
+        f"workspace's clone of {pointer.repository} at `{clone}`.\n"
         f"\n"
-        f"Run {brief.run}, on branch {brief.branch}, in this workspace's "
-        f"clone of {pointer.repository} at `{clone}`, which was cloned onto "
-        f"that branch. Initialize it as the protocol permits, run preflight, "
-        f"then read the brief with `git show {pointer.sha}:{brief.path}`, "
-        f"claim turn {brief.claim}, and execute that brief.\n"
+        f"Everything the protocol puts before the work is done: the "
+        f"checkout is initialized on {brief.branch}, preflight passed, and "
+        f"turn {brief.claim} is claimed and published. Do not repeat any of "
+        f"it, and do not read anything else from the run tree.\n"
         f"\n"
-        f"Read nothing else from the run tree. If you are blocked, print "
-        f"the one blocked-channel line the protocol specifies and stop."
+        f"Your brief is {brief.path}, pinned at {pointer.sha}, and this is "
+        f"it verbatim:\n"
+        f"\n"
+        f"{_quoted(brief.body)}\n"
+        f"\n"
+        f"Execute it. When the work is committed, publish the turn with "
+        f"exactly this and nothing improvised:\n"
+        f"\n"
+        f"{publish_commands(brief, pointer, tool)}\n"
+        f"\n"
+        f"If you are blocked, print `relay blocked {brief.run} "
+        f"{brief.claim} <token>` with the protocol's token for the "
+        f"condition, and stop. The rules are at {PROTOCOL_URL}; the brief "
+        f"above and the commands here are the whole of this turn."
     )
+
+
+def _quoted(body: str) -> str:
+    """The brief, marked off so its own text cannot read as instruction."""
+    fence = "-" * 60
+    return f"{fence}\n{body}\n{fence}"

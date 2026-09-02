@@ -34,7 +34,11 @@ cleanup() {
   kill "${first_agent:-}" "${second_agent:-}" 2>/dev/null || true
   case "$test_root" in
     "${TMPDIR:-/tmp}"/dotfiles-wt-test.*)
-      rm -rf -- "$test_root"
+      if [ -n "${WT_TEST_KEEP:-}" ]; then
+        printf 'kept %s\n' "$test_root" >&2
+      else
+        rm -rf -- "$test_root"
+      fi
       ;;
     *)
       printf 'refusing to remove unexpected test path: %s\n' \
@@ -764,24 +768,45 @@ relay_out=$(wt_run claude relay/2026-09-02-01 -b feat/relay \
   --relay "spincyc/relayed@$relay_sha" 2>&1)
 assert_contains "$relay_out" "$relay_version run 2026-09-02-01, brief 001"
 assert_contains "$relay_out" 'claim 002, on feat/relay'
-# The prompt names the document, the brief, and the turn to claim, and
-# nothing about the work: the brief is the authority for that.
-assert_contains "$relay_out" \
-  "$relay_sha:.agent/runs/2026-09-02-01/001-brief.md"
-assert_contains "$relay_out" 'claim turn 002'
 assert_contains "$relay_out" '/relay/PROTOCOL.md'
-if printf '%s\n' "$relay_out" | grep -Fq 'no other'; then
-  fail "the launch prompt repeated the brief instead of pointing at it"
-fi
 # The clone is on the branch the handoff named, not on one derived from the
 # workspace name, which is what keeps status, push and check meaningful.
 relay_clone="$work/relay/2026-09-02-01/spincyc/relayed"
 [ "$(branch_of "$relay_clone")" = "feat/relay" ] ||
   fail "the relay clone is not on the handoff branch"
 
+printf '# the mechanical steps are done before the agent, not described\n'
+# The claim reaches origin before the session starts, so a replay or a
+# failed preflight costs no session at all.
+assert_contains "$relay_out" 'claimed  .agent/runs/2026-09-02-01/002-claim.md'
+git -C "$origins/spincyc/relayed" cat-file -e \
+  "feat/relay:.agent/runs/2026-09-02-01/002-claim.md" ||
+  fail "the claim was not published before the agent started"
+assert_contains "$relay_out" 'turn 002 is claimed and published'
+# The brief arrives verbatim rather than as somewhere to look it up.
+assert_contains "$relay_out" 'the executor lands on this brief and no other'
+assert_contains "$relay_out" "pinned at $relay_sha"
+assert_contains "$relay_out" 'relay prepare --protocol'
+assert_contains "$relay_out" \
+  '--result .agent/runs/2026-09-02-01/002-result.md'
+
 printf '# a relay launch waits, then says what the planner is owed\n'
 assert_contains "$relay_out" 'done 2026-09-02-01 002'
-assert_contains "$relay_out" 'relay blocked'
+# The stand-in agent publishes nothing, and wt says so rather than
+# implying a result the planner would then fail to find.
+assert_contains "$relay_out" '002-result.md is NOT at origin'
+
+printf '# a turn already claimed at origin stops without a session\n'
+replay_code=0
+replay_out=$(wt_run claude relay/replay -b feat/relay \
+  --relay "spincyc/relayed@$relay_sha" 2>&1) || replay_code=$?
+[ "$replay_code" = 3 ] ||
+  fail "a claim replay exited $replay_code, not 3"
+assert_contains "$replay_out" 'relay blocked 2026-09-02-01 002 claim-replay'
+if printf '%s\n' "$replay_out" | grep -Fq 'You are the executor'; then
+  fail "a claim replay still started an agent session"
+fi
+wt_run rm -f relay/replay >/dev/null 2>&1
 
 printf '# the brief is the authority for the branch, not the handoff\n'
 if wrong_branch=$(wt_run claude relay/wrong -b feat/other \
@@ -822,14 +847,29 @@ wt_run rm -f relay/bad >/dev/null 2>&1
 wt_run rm -f relay/plain >/dev/null 2>&1
 
 printf '# wt agents names the run and turn a relay worker is on\n'
+# The next turn of the same run: turn 002 is claimed, so this needs its own
+# brief, exactly as the planner would publish one.
+git -C "$relay_seed" pull --quiet --ff-only
+sed 's/^turn: 001$/turn: 003/' \
+  "$relay_seed/.agent/runs/2026-09-02-01/001-brief.md" \
+  >"$relay_seed/.agent/runs/2026-09-02-01/003-brief.md"
+git -C "$relay_seed" add .agent
+git -C "$relay_seed" commit --quiet -m 'brief 003'
+git -C "$relay_seed" push --quiet origin feat/relay
+relay_next=$(git -C "$relay_seed" rev-parse HEAD)
 rm -f -- "$test_root/slow-release" "$test_root"/slow-started-*
 wt_agent=slow-agent wt_run relay/2026-09-02-01 -b feat/relay \
-  --relay "spincyc/relayed@$relay_sha" >/dev/null 2>&1 &
+  --relay "spincyc/relayed@$relay_next" >"$test_root/relay-next.log" 2>&1 &
 relay_agent=$!
 wait_for 'wt_run agents | grep -Fq "run=2026-09-02-01"'
 relay_agents=$(wt_run agents)
 assert_contains "$relay_agents" 'workspace=relay/2026-09-02-01'
-assert_contains "$relay_agents" 'run=2026-09-02-01 turn=002'
+assert_contains "$relay_agents" 'run=2026-09-02-01 turn=004'
+# This second turn's clone was behind origin by the first turn's claim.
+# Preflight stops hard on a stale base and names the pure fast-forward as
+# the fix, so it is taken before preflight rather than left to a hand.
+assert_contains "$(cat "$test_root/relay-next.log")" \
+  'fast-forwarded to origin/feat/relay'
 : >"$test_root/slow-release"
 wait "$relay_agent" 2>/dev/null || true
 rm -f -- "$test_root/slow-release" "$test_root"/slow-started-*

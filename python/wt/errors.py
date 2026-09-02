@@ -21,6 +21,38 @@ class UsageError(WtError):
     exit_code = 2
 
 
+class RelayBlocked(WtError):
+    """A relay turn stopped at a condition the protocol names.
+
+    The token is the payload rather than decoration on the message: the
+    user relays one line and nothing else, so the line has to be reachable
+    without parsing English out of the detail. A token the protocol's
+    blocked channel does not name is `relayed=False`, and is a stop to
+    report here rather than to carry back.
+    """
+
+    exit_code = 3
+
+    def __init__(
+        self,
+        run: str,
+        turn: str,
+        token: str,
+        detail: str,
+        relayed: bool = True,
+    ) -> None:
+        super().__init__(detail)
+        self.run = run
+        self.turn = turn
+        self.token = token
+        self.relayed = relayed
+
+    @property
+    def line(self) -> str:
+        """The one line the user may carry back to the planner."""
+        return f"relay blocked {self.run} {self.turn} {self.token}"
+
+
 class PartlyRemoved(WtError):
     """Deletion began and could not finish, so the tree is now neither."""
 

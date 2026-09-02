@@ -662,13 +662,31 @@ exit codes instead of leaving each executor to reinvent the predicates.
 The same repository publishes a workspace launcher, `wt`, which is what a
 launch handoff invokes. It creates or reuses a disposable workspace, clones
 the repository onto the branch the handoff names, reads the brief at the
-pinned commit, derives the run, the turns, and the protocol version from
-that brief's own front matter, and opens the executor with the prompt the
-portable handoff would have carried. The three bullets above bind it exactly
-as they bind `relay`: it is an accelerator, a version mismatch is a hard
-stop, and a run that cannot use it proceeds unchanged.
+pinned commit, and derives the run, the turns, and the protocol version from
+that brief's own front matter. It then performs, rather than describes, every
+step this document puts before the work: workspace initialization, the pure
+fast-forward preflight step 7 names, preflight itself, and the claim. Only
+then does it open an executor, and what it hands that executor is the brief
+at its pinned bytes and the exact commands that publish the turn. The three
+bullets above bind it exactly as they bind `relay`: it is an accelerator, a
+version mismatch is a hard stop, and a run that cannot use it proceeds
+unchanged.
 
-A launcher must not invent any field it cannot read. The brief's front
-matter is the authority for the run, the turn, and the branch; a `branch:`
-that disagrees with the launch handoff is a protocol violation to report,
-not a difference to reconcile.
+A step described in prose is a step an executor reconstructs, and a
+reconstructed step is where a run improvises. So a launcher performs what is
+decidable without judgement and leaves the rest untouched:
+
+- It may perform any step this document specifies, and must perform it
+  exactly as specified. A stop is reported as the blocked-channel line for
+  that condition, before an executor session is opened, since a session that
+  only rediscovers the stop costs the user a session for nothing.
+- It must not invent a field it cannot read. The brief's front matter is the
+  authority for the run, the turn, and the branch; a `branch:` that disagrees
+  with the launch handoff is a protocol violation to report, not a difference
+  to reconcile.
+- It must not decide anything the brief or the executor decides. It never
+  summarises or paraphrases a brief, never writes a result, and never
+  continues past a stop.
+- It may report whether the turn's result reached `origin`, and must not
+  infer the turn's outcome from that or from anything else. The planner
+  reads the result file; the launcher's report is addressed to the user.
