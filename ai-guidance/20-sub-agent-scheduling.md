@@ -59,6 +59,16 @@ documents. Each brief states:
   report a weak, uncertain, or partly failed outcome as one. Finishing a
   lane is not the same as succeeding at it, and a favorable summary costs
   the coordinator the evidence its review depends on.
+- The reasoning effort the lane runs at, where the harness lets a delegate
+  be dispatched at one. Match it to the judgment, not to the lane's length:
+  the ceiling is for deciding what the evidence does not support, which is
+  the judgment that goes wrong quietly; the middle is for work whose answer
+  is checkable once produced; the floor is for a lookup with one right
+  answer — a single locus, a single hash, one file's contents. An unstated
+  effort is the harness default, which is a choice nothing recorded.
+- Where a workflow declares the level, that declaration governs and this
+  paragraph does not: dispatch the lane at the level the workflow names, and
+  raise or lower it only by changing the workflow.
 
 ## Nested delegation
 
