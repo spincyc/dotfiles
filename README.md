@@ -1,9 +1,9 @@
 # dotfiles
 
 A small, portable terminal profile plus an explicit, opt-in ML4W desktop
-profile. The core manages Zsh and tmux. The desktop profile tracks reviewed
-overrides and ML4W selector values rather than copying the unmodified vendor
-tree into Git.
+profile. The core manages Zsh, tmux, and Emacs. The desktop profile tracks
+reviewed overrides and ML4W selector values rather than copying the unmodified
+vendor tree into Git.
 
 ## First-time setup
 
@@ -848,6 +848,18 @@ outside a repository. Set `NO_COLOR` to get the same line unstyled.
 
 OpenCode is not wired up. It renders its status bar internally and exposes no
 command or item selection to configure, so there is nothing to align.
+
+## Emacs
+
+The core installer links the repository's `.emacs` to `~/.emacs`. It provides
+the preferred dark faces, navigation keys, four-space C and C++ style, and
+file associations. Lua uses Emacs's built-in tree-sitter mode when its grammar
+is available, then falls back to an installed `lua-mode`.
+
+Legacy libraries under `~/emacs/lua`, `~/emacs/toggle`, and `~/emacs/p4` are
+loaded only when present, so a fresh machine starts without errors. Put other
+machine-specific Emacs settings in `~/.emacs.local`; it is loaded automatically
+and must not be committed.
 
 ## Local configuration
 

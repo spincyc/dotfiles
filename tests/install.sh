@@ -133,6 +133,7 @@ while IFS='|' read -r layer expected_mode relative_path; do
 done <"$profile_dir/manifest"
 
 for core_target in \
+  .emacs \
   .zshrc \
   .tmux.conf \
   .local/bin/wt \

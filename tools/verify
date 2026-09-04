@@ -348,6 +348,21 @@ def check_profile() -> None:
         run(["./install.sh"], env=install_env)
         run(["./install.sh", "--check"], env=install_env)
 
+        emacs = shutil.which("emacs")
+        if emacs:
+            run(
+                [
+                    emacs,
+                    "--batch",
+                    "--quick",
+                    "--load",
+                    str(Path(install_home) / ".emacs"),
+                ],
+                env=install_env,
+            )
+        else:
+            print("skip check_profile: emacs unavailable")
+
         shell_path = run(
             ["zsh", "-c", "print -r -- $PATH"], env=install_env
         ).strip()
