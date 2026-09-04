@@ -54,7 +54,7 @@ if [[ -r "$ZSH/oh-my-zsh.sh" ]]; then
   ZSH_THEME_GIT_PROMPT_SUFFIX="%F{yellow})%f "
   ZSH_THEME_GIT_PROMPT_DIRTY="%F{red}*%f"
   ZSH_THEME_GIT_PROMPT_CLEAN=""
-  PROMPT='%F{cyan}%~%f $(git_prompt_info)%# '
+  PROMPT='%F{cyan}%m:%~%f $(git_prompt_info)%# '
 else
   autoload -Uz compinit vcs_info
   zsh_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
@@ -62,7 +62,7 @@ else
   compinit -d "$zsh_cache_dir/zcompdump"
   zstyle ':vcs_info:git:*' formats ' %F{yellow}git:(%b)%f'
   precmd() { vcs_info }
-  PROMPT='%F{cyan}%~%f${vcs_info_msg_0_} %# '
+  PROMPT='%F{cyan}%m:%~%f${vcs_info_msg_0_} %# '
 fi
 
 [[ -r "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"

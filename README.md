@@ -26,8 +26,9 @@ directories below `~/.local/state/dotfiles/backups/`; they are never silently
 overwritten. The optional ML4W profile uses private copies in the same backup
 hierarchy before atomic replacement.
 
-Oh My Zsh is optional. Without it, `.zshrc` uses native Zsh completion and Git
-status. To install Oh My Zsh using its official installer:
+Oh My Zsh is optional. With or without it, the prompt shows the short hostname,
+current directory, and Git status; the fallback uses native Zsh completion and
+Git integration. To install Oh My Zsh using its official installer:
 
 ```sh
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
