@@ -849,6 +849,35 @@ outside a repository. Set `NO_COLOR` to get the same line unstyled.
 OpenCode is not wired up. It renders its status bar internally and exposes no
 command or item selection to configure, so there is nothing to align.
 
+## UniFi settings audit: `unifi-audit`
+
+Most "why is the Wi-Fi bad" questions are answered by the controller rather
+than by the client, but the fields that matter are spread across four
+endpoints and several UI screens, so a by-hand pass misses things.
+`bin/unifi-audit` reads all four at once, marks the fields worth a second
+look with `!!`, and leaves the rest as context:
+
+```sh
+export UNIFI_HOST=10.0.0.1
+export UNIFI_API_KEY=...      # Settings -> Control Plane -> Integrations
+unifi-audit
+```
+
+It covers per-SSID settings (meshing, 802.11r/k/v, minimum RSSI, group rekey
+interval, DTIM, broadcast and multicast handling), per-AP radio configuration
+including channel width, live uplink type and channel utilization, and the
+site-wide blocks for the uplink connectivity monitor and RF auto-optimization.
+
+`--all` prints every key of every record, and `--json DIR` saves the raw
+response per endpoint, so a change can be made and then diffed rather than
+recalled. The key is read from the environment and never printed, so a saved
+report can be shared as-is.
+
+UniFi OS serves the controller under `/proxy/network`; older standalone
+controllers serve it at the root. Both are tried, in that order. Consoles
+ship self-signed certificates, so verification is off unless `--verify` is
+passed, and the command says so on stderr each run.
+
 ## Emacs
 
 The core installer links the repository's `.emacs` to `~/.emacs`. It provides
