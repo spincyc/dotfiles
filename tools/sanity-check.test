@@ -1,5 +1,5 @@
 #!/bin/sh
-# Test for tools/sanity-check: exit 0 = pass (the stable gate).
+# Test for tools/sanity-check: exit 0 = pass.
 set -eu
 
 tool="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/sanity-check"

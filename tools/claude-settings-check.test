@@ -1,9 +1,5 @@
 #!/bin/sh
-# Test for tools/claude-settings-check: exit 0 = pass (the stable gate).
-# Only --help exits 0 is universally guaranteed by the tool contract;
-# every other assertion is tool-specific. Write real ones below — the
-# stable gate refuses to promote while this file is the unmodified
-# scaffold.
+# Test for tools/claude-settings-check: exit 0 = pass.
 set -eu
 
 # Resolved sibling path: keeps working after a cd into a sandbox.

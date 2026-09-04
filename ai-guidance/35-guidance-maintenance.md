@@ -23,4 +23,4 @@ Apply these rules when editing the guidance file set — `AI_GUIDANCE.md`,
   other live sessions to stay stale until restarted.
 - Keep each rule in its owning document and cross-reference instead of
   copying. Authority, mutation, and completion rules stay owned by
-  `00-core.md`; runtime-state rules by `10-journal.md`.
+  `00-core.md`.

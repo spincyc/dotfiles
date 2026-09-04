@@ -115,22 +115,9 @@ ignore, without asking — including ignored build output such as a
 virtualenv or `node_modules`. `wt tidy --dry-run` reports and deletes
 nothing. Anything you leave in `.scratch` is gone at the next tidy.
 
-## No work ledger here
-
-This workspace keeps no local work state. Do not use `aiq` in it: no
-ingesting, claiming, enqueuing, settling, or journal initialization, and no
-treating the absence of work state as a defect. Do not use `tmt` here either:
-record no candidates and scaffold no registry. `wt` exports `AIQ_DISABLE=1`,
-which switches the installed hooks off — but only for an aiq newer than
-`0.3.0a1`; an older one ignores the variable and goes on capturing. The rule
-above holds either way; never work around it.
-
-A cloned repository inside this workspace keeps its own contracts. If it has
-a `tmt.json`, tool making applies to that repository normally.
-
 ## What `wt` sets in this session
 
-`wt` exports five variables into the agent it launches:
+`wt` exports four variables into the agent it launches:
 
 - `WT_WORKSPACE` — this workspace's name, `{workspace}`.
 - `WT_WORKSPACE_DIR` — its absolute path, the directory you started in.
@@ -138,7 +125,6 @@ a `tmt.json`, tool making applies to that repository normally.
   `git push -u origin "$WT_BRANCH"` rather than retyping the name.
 - `WT_AGENT_SLOT` — which agent slot this session holds; `wt agents` lists
   every agent running right now.
-- `AIQ_DISABLE` — the work-ledger switch described above.
 
 They exist only in this session; a shell opened anywhere else has none of
 them.

@@ -68,14 +68,9 @@ Universal rules for work governed by this guidance set.
   intended local target; the working tree holds nothing beyond the delivered
   change, committed where committing is authorized; task-created temporary
   branches, worktrees, directories, and processes are removed unless the user
-  requested retention; and, where a local work ledger is in use, outcomes are
-  recorded and held claims are completed or released (see `10-journal.md`).
+  requested retention.
 - Immediately before composing a final response, check authoritative work
-  state, not intended prose, elapsed effort, or token pressure. Where aiq is
-  available, consult `aiq status`: ready tasks, unexpired active claims, or
-  messages awaiting interpretation mean in-scope work remains runnable. A
-  message parked needs-input awaits the user and permits a final response
-  that asks for the missing input.
+  state, not intended prose, elapsed effort, or token pressure.
 - While in-scope work remains runnable, a final response is forbidden: send a
   concise progress update only when useful and resume execution in the same
   turn.
@@ -93,15 +88,13 @@ Universal rules for work governed by this guidance set.
 
 - Classify consequential directives and decisions as task-local,
   implementation-specific, repository-wide, or general.
-- Before completion, promote anything future tasks need from chat, temporary
-  state, or task journals into its canonical non-journal artifact on the
-  intended target branch. Prefer existing code, tests, configuration,
+- Before completion, promote anything future tasks need from chat or temporary
+  state into its canonical artifact on the intended target branch. Prefer
+  existing code, tests, configuration,
   documentation, repository guidance, or general guidance over a new record.
-- When promoting, prefer the most executable artifact that fits: a registry
-  tool per `15-tool-making.md` (at its recurrence thresholds) for recurring
-  deterministic derivations, then a test or check, then configuration;
-  reserve guidance prose for judgment. Keep each rule in exactly one artifact
-  and cross-reference it elsewhere.
+- When promoting, prefer the most executable artifact that fits: a test or
+  check, then configuration; reserve guidance prose for judgment. Keep each
+  rule in exactly one artifact and cross-reference it elsewhere.
 - Do not preserve task-local details merely for completeness. Never commit
   secrets, credentials, transient host data, or temporary operational values.
 - Treat a durable artifact as current memory and supersede it explicitly when

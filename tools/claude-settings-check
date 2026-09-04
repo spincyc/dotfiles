@@ -3,9 +3,6 @@
 
 Usage: tools/claude-settings-check [--json]
 """
-# Composition idiom: run a sibling tool with
-#     subprocess.run([str(Path(__file__).parent / "<dep>"), ...], check=True)
-# and declare "<dep>" in this tool's `requires` list in tmt.json.
 from __future__ import annotations
 
 import argparse

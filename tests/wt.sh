@@ -214,9 +214,9 @@ EOF
 # A stand-in agent that records where it was launched and what it received.
 cat >"$fake_bin/fake-agent" <<'EOF'
 #!/bin/sh
-printf 'agent=%s cwd=%s slot=%s workspace=%s dir=%s branch=%s aiq_disable=%s' \
+printf 'agent=%s cwd=%s slot=%s workspace=%s dir=%s branch=%s' \
   "$(basename -- "$0")" "$(pwd -P)" "${WT_AGENT_SLOT:-}" "${WT_WORKSPACE:-}" \
-  "${WT_WORKSPACE_DIR:-}" "${WT_BRANCH:-}" "${AIQ_DISABLE:-unset}"
+  "${WT_WORKSPACE_DIR:-}" "${WT_BRANCH:-}"
 printf ' searches=%s args=%s\n' \
   "${CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION:-unset}" "$*"
 EOF
@@ -282,9 +282,6 @@ assert_contains "$(cat "$work/telos/demo/AGENTS.md")" \
   'wt clone telos/demo spincyc/telos'
 assert_contains "$(cat "$work/telos/demo/AGENTS.md")" \
   'Every repository lives at `<owner>/<repo>`'
-assert_contains "$(cat "$work/telos/demo/AGENTS.md")" 'Do not use `aiq`'
-assert_contains "$(cat "$work/telos/demo/AGENTS.md")" 'AIQ_DISABLE'
-
 printf '# guidance names the workspace branch\n'
 assert_contains "$(cat "$work/telos/demo/AGENTS.md")" \
   'Commit to `feature/demo`'
@@ -741,9 +738,6 @@ assert_contains "$named_out" "cwd=$work/telos/demo"
 assert_contains "$(wt_run codex telos/demo 2>/dev/null)" 'agent=codex'
 assert_contains "$(wt_run droid telos/demo 2>/dev/null)" 'agent=droid'
 assert_contains "$(wt_run telos/demo 2>/dev/null)" 'agent=fake-agent'
-
-printf '# the launched agent keeps no work ledger\n'
-assert_contains "$launch_out" 'aiq_disable=1'
 
 printf '# claude is launched with a raised web search budget\n'
 assert_contains "$named_out" 'searches=1000'

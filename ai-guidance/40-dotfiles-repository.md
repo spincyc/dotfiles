@@ -29,8 +29,8 @@ opt-in desktop overlays:
   never link or overwrite it.
 - `README.md`: setup, synchronization, and local overrides.
 
-Exclude AIQ runtime state, credentials, private host identity, generated
-state, caches, restored duplicates, and unmodified vendor trees. Put
+Exclude credentials, private host identity, generated state, caches, restored
+duplicates, and unmodified vendor trees. Put
 machine-specific shell configuration in `~/.zshrc.local`. Put reviewed
 machine-specific desktop values in a semantic host layer that does not expose
 a hostname.
@@ -72,9 +72,8 @@ a hostname.
 Run the smallest relevant checks; `make verify` is the authoritative
 repository-wide battery: syntax and tmux checks, temp-home install,
 Arch-package-list, bootstrap budget, bootstrap-file, cross-reference,
-index-parity, core-recovery-contract, relay-contract, tool-registry
-(`tmt check`), journal-artifact, Python byte-compile, and the `tests/wt.sh`
-and `tests/wt_unit.py` checks.
+index-parity, core-recovery-contract, relay-contract, tracked-artifact,
+Python byte-compile, and the `tests/wt.sh` and `tests/wt_unit.py` checks.
 `tools/verify --only CHECK ...` runs named checks;
 `make verify-guidance` is the documentation-only subset
 (`35-guidance-maintenance.md`). The battery does not cover the isolated

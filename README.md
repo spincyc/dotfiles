@@ -547,23 +547,6 @@ cloned repository nothing. A clone made by hand has none until a real
 `.scratch` is not covered at all — `wt tidy` reports those and leaves them
 alone. `wt tidy` is what empties the rest.
 
-A workspace keeps no work ledger. `wt` exports `AIQ_DISABLE=1` into the agent,
-which switches the installed AIQ hooks off for that session, and the workspace
-guidance plus [`ai-guidance/10-journal.md`](ai-guidance/10-journal.md) and
-[`15-tool-making.md`](ai-guidance/15-tool-making.md) tell the agent not to use
-`aiq` or `tmt` there. Both halves are needed: the environment variable stops
-prompt capture and the completion gate, and the guidance stops the agent
-looking for work state that is deliberately absent. Without the variable a
-workspace root, not being a Git repository, would fall back to AIQ's user
-scope and capture every prompt.
-
-`AIQ_DISABLE` needs an AIQ newer than `0.3.0a1`, currently only from source. An
-older AIQ ignores the variable and keeps capturing, so until the installed AIQ
-is refreshed the guidance half works and the mechanical half does not. Check
-with `aiq --version`, and see the AIQ changelog before upgrading across a
-release: `aiq doctor` reports the switch on its `capture` line once it is
-supported.
-
 ```sh
 wt claude proj/slug -b impl/x -r own/repo --seed-file ./b.md -x ./setup.sh
 wt ls                                   # every workspace and the repos it holds
@@ -697,7 +680,7 @@ Bare `owner/repo` clones go through `gh` when it is installed, so private
 repositories need no separate credential setup; explicit URLs and local
 paths always go through `git clone`.
 
-Six variables go the other way, exported into the agent `wt` launches and
+Five variables go the other way, exported into the agent `wt` launches and
 into nothing else — a shell you opened yourself has none of them:
 
 | Variable | Value |
@@ -706,7 +689,6 @@ into nothing else — a shell you opened yourself has none of them:
 | `WT_WORKSPACE_DIR` | Its absolute path, the directory the agent starts in |
 | `WT_BRANCH` | The workspace branch, for `git push -u origin "$WT_BRANCH"` |
 | `WT_AGENT_SLOT` | Which agent slot this session holds |
-| `AIQ_DISABLE` | Set to `1`: a workspace keeps no work ledger |
 | `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` | Set to `1000` for `claude` |
 
 The last one is the only one that defers to you. Claude Code stops searching
@@ -912,9 +894,8 @@ Put machine-specific settings and secrets in `~/.zshrc.local`. That file is
 loaded automatically and must not be committed.
 
 The managed `.zshenv` prepends `~/.local/bin` to `PATH` for every Zsh
-invocation, so pipx-installed tools such as `aiq` and `tmt` resolve in
-non-interactive shells, hooks, and agent sessions, not only in interactive
-terminals.
+invocation, so user-installed commands resolve in non-interactive shells and
+agent sessions, not only in interactive terminals.
 
 It also *appends* this repository's own `bin/` directory, so a tool added
 there is on `PATH` in the next Zsh shell with no reinstall. That is a
@@ -956,25 +937,6 @@ make sanity-check
 make verify
 ```
 
-## Local AI queue and journal
-
-AIQ is maintained as a separate project. Install it from source, then let its
-reversible integration lifecycle manage the Codex prompt hook:
-
-```sh
-git clone https://github.com/spincyc/aiq.git "$HOME/git/aiq"
-make -C "$HOME/git/aiq" install-packages
-pipx install "$HOME/git/aiq"
-aiq integration plan codex --user
-aiq integration install codex --user
-aiq integration check codex --user
-```
-
-See the [AIQ source-install and integration
-documentation](https://github.com/spincyc/aiq) for prerequisites, updates, and
-uninstallation. This dotfiles installer provides personal agent guidance but
-does not install AIQ or manage its integration files.
-
 ## AI-assisted contributions
 
 [`AI_GUIDANCE.md`](AI_GUIDANCE.md) is the mandatory tool-neutral entry point
@@ -988,10 +950,9 @@ Copilot instructions.
 
 The installer seeds `~/.claude/settings.json` from `claude/settings.json`
 only when it does not exist and never overwrites it: Claude Code rewrites the
-live file in place, and the AIQ and tmt integrations layer their own hook
-groups onto it, so the live copy is runtime state that must not be symlinked
-or reclaimed. `tools/claude-settings-check` reports drift between the seed's
-base keys and the live file.
+live file in place, so the live copy is runtime state that must not be
+symlinked or reclaimed. `tools/claude-settings-check` reports drift between
+the seed's base keys and the live file.
 
 After pulling the document split for the first time, rerun `./install.sh` to
 create the managed feature-directory links. For an agent that does not

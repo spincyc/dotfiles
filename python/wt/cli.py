@@ -158,8 +158,7 @@ Exported into the agent:
   WT_WORKSPACE       The complete workspace name
   WT_WORKSPACE_DIR   Its absolute path
   WT_BRANCH          The workspace branch, for git push -u origin "$WT_BRANCH"
-  WT_AGENT_SLOT      Which slot this agent holds
-  AIQ_DISABLE        A workspace keeps no work ledger\
+  WT_AGENT_SLOT      Which slot this agent holds\
 """
 
 REPO_LINE = "{name:<34} {branch:<22} {state:<7} {upstream:<26} {tracking}"
@@ -999,10 +998,6 @@ def agent_environment(
         "WT_WORKSPACE_DIR": str(workspace.path),
         "WT_BRANCH": workspace.branch,
         "WT_AGENT_SLOT": str(slot),
-        # A workspace keeps no work ledger. The workspace root is not a
-        # repository, so aiq would otherwise fall back to user scope and
-        # capture every prompt of a session that is meant to be disposable.
-        "AIQ_DISABLE": "1",
     }
     # A workspace is where the long research runs happen, so raise the search
     # ceiling up front rather than stranding a session already deep in one.

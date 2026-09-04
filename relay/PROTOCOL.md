@@ -15,8 +15,8 @@ in the handoff line, which is how the executor finds it.
 
 Read this document completely before acting in either role. It is
 self-sufficient: assume the other side has read nothing else. Rules here that
-restate the author's global guidance (`00-core.md`, `10-journal.md`) are
-deliberate restatements for cold readers. On conflict, higher-authority
+restate the author's global guidance (`00-core.md`) are deliberate
+restatements for cold readers. On conflict, higher-authority
 instructions and the active repository's own instructions govern over this
 protocol, and this protocol governs over a brief.
 
@@ -514,9 +514,8 @@ run.
   instructions outrank both this protocol and the brief. When they conflict,
   follow the higher authority and record the conflict in the result instead
   of resolving it silently.
-- The handoff line is a brief, not a user message: do not ingest or capture
-  it, and do not write the local work ledger. Relay runs are outside ledger
-  scope; the run record is the run directory.
+- The handoff line is a brief, not a user message. The run directory is the
+  durable record of the relay run.
 - Treat `subagents` as the planner's scheduling recommendation, subject to
   higher-authority instructions, available capacity, and actual parallel-safe
   work. Record any deviation and its reason in the result.

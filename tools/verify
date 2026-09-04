@@ -78,17 +78,9 @@ def check_bootstrap_budget() -> None:
 def check_tracked_paths() -> None:
     tracked = [path for path in run(["git", "ls-files", "-z"]).split("\0") if path]
     forbidden = [path for path in tracked if path.endswith(".sqlite3")]
-    for path in tracked:
-        try:
-            with open(REPO_ROOT / path, "rb") as handle:
-                first_line = handle.readline(512)
-        except OSError:
-            continue
-        if b"aiq-journal-jsonl" in first_line:
-            forbidden.append(path)
     if forbidden:
         raise RuntimeError(
-            f"journal artifacts are tracked: {', '.join(sorted(set(forbidden)))}"
+            f"runtime databases are tracked: {', '.join(sorted(set(forbidden)))}"
         )
 
 
@@ -273,16 +265,6 @@ def check_relay_protocol() -> None:
             )
 
 
-def check_tool_registry() -> None:
-    if not (REPO_ROOT / "tmt.json").exists():
-        return
-    tmt = shutil.which("tmt") or str(Path.home() / ".local" / "bin" / "tmt")
-    if not os.access(tmt, os.X_OK):
-        print("skip check_tool_registry: tmt unavailable")
-        return
-    run([tmt, "check"])
-
-
 def check_python_modules() -> None:
     run([sys.executable, "-m", "compileall", "-q", "python"])
     # compileall silently skips a path that does not end in .py, which every
@@ -387,7 +369,6 @@ def main() -> int:
         check_guidance_index,
         check_core_recovery_contract,
         check_relay_protocol,
-        check_tool_registry,
         check_tracked_paths,
         check_python_modules,
         check_wt,
