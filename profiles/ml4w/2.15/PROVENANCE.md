@@ -53,6 +53,23 @@ changed because ML4W renamed the scripts: `wlogout.sh` to `ml4w-power`,
 `cliphist.sh` to `ml4w-cliphist`, and `settings/filemanager.sh` to
 `settings/filemanager`.
 
+## Local additions
+
+`.config/hypr/custom.lua` carries locally authored content beyond the file it
+was translated from. It registers an `hyprland.start` handler that sets the
+wallpaper image with `ml4w-wallpaper --skip-theming` on every login.
+
+That handler works around a defect in upstream `ml4w-autostart`, which skips
+the image set whenever awww's cache holds any file at all. awww restores per
+output and keys its cache by connector name, so a cache holding only another
+output's entry suppresses the set and leaves the desktop at awww's default
+black, permanently, because the skipped set is also what would have written an
+entry for the live output. The workaround sits behind an ML4W extension point
+rather than in a forked copy of `ml4w-autostart`, so no vendor script is
+adopted into this profile and an upstream fix cannot be silently overwritten
+by one. `--skip-theming` keeps `ml4w-autostart` the sole owner of the theming
+pass. See the comment in the file for the full rationale.
+
 ## Verification status
 
 The five Lua files parse cleanly under both `luac5.4 -p` and LuaJIT. That

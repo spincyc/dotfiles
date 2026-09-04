@@ -199,6 +199,22 @@ while the sound server still reports it running. On every monitor add/remove,
 sink whose `/proc/asound/card*/eld*` entry is valid, matching on the ELD
 monitor name, and moves live streams to it.
 
+The profile also sets the wallpaper image itself on every login. ML4W's
+`ml4w-autostart` skips that step whenever awww's cache holds any file at all,
+to avoid a redundant transition. awww does restore the cached wallpaper on its
+own, but per output, and it keys its cache by connector name, so a cache
+holding only another output's entry still satisfies the skip. awww then finds
+no entry for the live output and leaves the desktop at its default black,
+while theming runs normally and the colors, bar, and lock screen all look
+right. The skipped set is also what would have written an entry for the live
+output, so the blank desktop repeats on every login rather than correcting
+itself, and the DisplayPort connector re-enumerating across sessions is enough
+to trigger it. A `hyprland.start` handler in `.config/hypr/custom.lua`
+therefore runs `ml4w-wallpaper --skip-theming` unconditionally. It sits behind
+an ML4W extension point rather than in a patched copy of `ml4w-autostart`, so
+no vendor script is forked, and `--skip-theming` leaves the theming pass to
+`ml4w-autostart` so the two do not duplicate it.
+
 `config.dotinst` still identifies the profile, its upstream, and its subfolder,
 and the gate checks all three; only its version field goes stale. Each layer's
 `profile.conf` records the release it was derived from as provenance rather than
