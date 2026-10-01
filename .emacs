@@ -53,6 +53,7 @@
 (dolist (mapping '(("\\.h\\'" . c++-mode)
                    ("\\.cc\\'" . c++-mode)
                    ("\\.def\\'" . c++-mode)
+                   ("\\.ino\\'" . c++-mode)
                    ("\\.mk\\." . makefile-gmake-mode)))
   (add-to-list 'auto-mode-alist mapping))
 
