@@ -1,8 +1,8 @@
 """Continuing the agent session a workspace already had.
 
 A workspace is one line of work, so running the agent in it again almost
-always means carrying on rather than starting over. Resuming is the one
-place `wt` has to know an agent's own flags: there is no shared spelling
+always means carrying on rather than starting over. Resuming needs
+agent-specific flags: there is no shared spelling
 for *continue where you left off*, and an agent asked to continue a session
 it never had reports that instead of starting one. So `wt` notes which
 agents have run in a workspace and offers each of them the incantation it

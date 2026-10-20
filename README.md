@@ -255,6 +255,25 @@ wt agent-sync                   # a bare slug takes $WT_PROJECT
 The project only groups workspaces and names nothing on a forge; the
 repositories a workspace holds are still cloned explicitly.
 
+`wt codex` adds `--no-daemon` to fresh, resumed, seeded, and relay launches.
+Each local session runs with the environment `wt` exports, without a shared
+background server that may have started in another workspace. This requires
+a Codex CLI that supports `--no-daemon` (checked with
+0.163.0). An explicit `--remote <address>` or `--remote=<address>` keeps the
+requested connection, since Codex rejects combining it with `--no-daemon`.
+Pass `--new` when selecting a session yourself, for example
+`wt codex --new telos/agent-sync -- resume <session-id>`. The shared-server
+command center (`codex agents` and `/agents`) is available through a normal
+Codex launch. See the [official OpenAI CLI reference](https://learn.chatgpt.com/docs/cli/reference).
+
+The other agent defaults stay unchanged. [Claude Code's ordinary sessions are
+terminal-bound](https://code.claude.com/docs/en/agent-view#how-background-sessions-are-hosted);
+its supervisor starts when backgrounding a session or opening agent view.
+`CLAUDE_CODE_DISABLE_AGENT_VIEW=1` is a supported opt-out, but would also remove
+deliberate background sessions and agent view. [Droid's CLI reference](https://docs.factory.com/droid-cli/cli-reference)
+documents interactive launches and a separate daemon command, without a
+`--no-daemon` equivalent. Custom `WT_AGENT` programs receive no assumed flags.
+
 A launch can also hand the agent the prompt to open with, so that creating
 the workspace and starting the work is one command rather than a launch
 followed by a paste:
@@ -300,8 +319,8 @@ wt claude --new telos/agent-sync    # starts a fresh one
 wt codex telos/agent-sync           # codex resumes its own session, not that one
 ```
 
-Resuming is the one place `wt` has to know an agent's own flags, because there
-is no shared spelling for it and an agent asked to continue a session it never
+Resuming needs agent-specific flags, because there is no shared spelling for
+it and an agent asked to continue a session it never
 had reports that instead of starting one. So `wt` notes which agents have run
 in a workspace, in a `.wt-agents` file beside `.wt-workspace`, and offers each
 of them the incantation it understands: `--continue` for `claude`,

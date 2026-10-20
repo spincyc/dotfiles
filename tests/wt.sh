@@ -812,10 +812,37 @@ assert_agent_args \
   '--continue --flag value'
 
 printf '# each agent resumes only its own session, in its own spelling\n'
-assert_agent_args "$(wt_run codex telos/carry-on 2>/dev/null)" ''
-assert_agent_args "$(wt_run codex telos/carry-on 2>/dev/null)" 'resume --last'
+assert_agent_args "$(wt_run codex telos/carry-on 2>/dev/null)" '--no-daemon'
+assert_agent_args "$(wt_run codex telos/carry-on 2>/dev/null)" \
+  '--no-daemon resume --last'
 assert_agent_args "$(wt_run droid telos/carry-on 2>/dev/null)" ''
 assert_agent_args "$(wt_run droid telos/carry-on 2>/dev/null)" '--resume'
+
+printf '# codex keeps a local server for fresh and explicitly resumed sessions\n'
+assert_agent_args "$(wt_run codex --new telos/carry-on 2>/dev/null)" \
+  '--no-daemon'
+assert_agent_args \
+  "$(wt_agent=codex wt_run --new telos/carry-on --flag value 2>/dev/null)" \
+  '--no-daemon --flag value'
+assert_agent_args \
+  "$(wt_run codex --new telos/carry-on -- resume --last 2>/dev/null)" \
+  '--no-daemon resume --last'
+assert_agent_args \
+  "$(wt_run codex --new telos/carry-on -- --no-daemon 2>/dev/null)" \
+  '--no-daemon'
+
+printf '# an explicit codex remote connection selects its own server\n'
+assert_agent_args \
+  "$(wt_run codex --new telos/carry-on -- --remote ws://localhost:9000 \
+    2>/dev/null)" \
+  '--remote ws://localhost:9000'
+assert_agent_args \
+  "$(wt_run codex telos/carry-on --remote=unix:// 2>/dev/null)" \
+  'resume --last --remote=unix://'
+# A literal prompt after Codex's own -- is not a connection option.
+assert_agent_args \
+  "$(wt_run codex --new telos/carry-on -- -- --remote 2>/dev/null)" \
+  '--no-daemon -- --remote'
 
 printf '# an agent wt has no resume spelling for is always fresh\n'
 wt_run telos/carry-on >/dev/null 2>&1
@@ -832,7 +859,7 @@ printf '# an agent that cannot resume with a prompt opens a fresh session\n'
 # with nowhere to go and nobody able to retype it.
 codex_seeded=$(wt_run codex --seed 'the next brief' telos/carry-on 2>&1)
 assert_contains "$codex_seeded" 'starts a fresh session'
-assert_agent_args "$codex_seeded" 'the next brief'
+assert_agent_args "$codex_seeded" '--no-daemon the next brief'
 assert_agent_args \
   "$(wt_run claude --seed 'the next brief' telos/carry-on 2>/dev/null)" \
   '--continue the next brief'
@@ -1011,7 +1038,8 @@ codex_relay=$(wt_run codex relay/fresh -b feat/relay \
   --relay "spincyc/relayed@$codex_next" 2>&1) ||
   fail "the second codex relay turn failed: $codex_relay"
 assert_contains "$codex_relay" 'starts a fresh session'
-if printf '%s\n' "$codex_relay" | grep -Fq 'args=resume --last'; then
+assert_contains "$codex_relay" 'args=--no-daemon '
+if printf '%s\n' "$codex_relay" | grep -Fq 'args=--no-daemon resume --last'; then
   fail "codex was resumed with a prompt it reads as a session id"
 fi
 wt_run rm -f relay/fresh >/dev/null 2>&1
