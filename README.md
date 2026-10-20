@@ -255,9 +255,12 @@ wt agent-sync                   # a bare slug takes $WT_PROJECT
 The project only groups workspaces and names nothing on a forge; the
 repositories a workspace holds are still cloned explicitly.
 
-`wt codex` adds `--no-daemon` to fresh, resumed, seeded, and relay launches.
-Each local session runs with the environment `wt` exports, without a shared
-background server that may have started in another workspace. This requires
+`wt codex` adds `--dangerously-bypass-approvals-and-sandbox` to fresh, resumed,
+seeded, and relay launches, giving Codex full access without sandboxing or
+approval prompts. See [OpenAI's permissions documentation](https://learn.chatgpt.com/docs/agent-approvals-security#common-sandbox-and-approval-combinations).
+It also adds `--no-daemon`, so each local session runs with the environment
+`wt` exports, without a shared background server that may have started in
+another workspace. This requires
 a Codex CLI that supports `--no-daemon` (checked with
 0.163.0). An explicit `--remote <address>` or `--remote=<address>` keeps the
 requested connection, since Codex rejects combining it with `--no-daemon`.

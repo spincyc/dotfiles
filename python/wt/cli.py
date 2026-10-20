@@ -68,8 +68,10 @@ asking for both under either of those starts a fresh session and says so,
 because a prompt that reaches nobody is the worse failure. Use --new when
 driving the agent's own session flags yourself.
 
-Codex launches with --no-daemon to use the environment wt exports without a
-shared background server. An explicit --remote connection keeps its server.
+Codex launches with --dangerously-bypass-approvals-and-sandbox for full access
+without approval prompts, and --no-daemon to use the environment wt exports
+without a shared background server. An explicit --remote connection keeps its
+server.
 
 --relay is what a relay-v6 launch handoff invokes. It needs -b and derives
 everything else from the brief's front matter at the pinned commit. It then
@@ -1464,6 +1466,11 @@ def launch(config: Config, agent: str, args: list[str]) -> int:
             for arg in agent_options
         ) else ()
     )
+    if agent == "codex" and not any(
+        arg in ("--dangerously-bypass-approvals-and-sandbox", "--yolo")
+        for arg in agent_options
+    ):
+        agent_defaults += ("--dangerously-bypass-approvals-and-sandbox",)
     # The seed goes last and positional: claude, codex and droid each read a
     # trailing argument as the prompt to open with.
     command = [
