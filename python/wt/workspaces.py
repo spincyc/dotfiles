@@ -41,6 +41,10 @@ MARKER_CONTENT = f"{MARKER_VERSION}\n"
 MARKER_BRANCH = "branch"
 GROUP_MARKER = ".wt-group"
 GROUP_MARKER_CONTENT = "wt-group-v1\n"
+# The branch a project's default leaf is created on unless -b names another.
+# A bare project name opens that project's own main line, not a feature branch
+# derived from the leaf's name.
+DEFAULT_LEAF_BRANCH = "main"
 
 
 def marker_text(branch: str | None) -> str:
@@ -130,8 +134,12 @@ class Workspace:
         return self.config.root / self.name
 
     def pinned_to(self, branch: str | None) -> "Workspace":
-        """The same workspace, working on a branch the caller named."""
-        return replace(self, pin=branch)
+        """The same workspace, working on a branch the caller named.
+
+        Naming none keeps the pin the name already carried, such as a
+        project's default leaf on DEFAULT_LEAF_BRANCH.
+        """
+        return self if branch is None else replace(self, pin=branch)
 
     def recorded_branch(self) -> str | None:
         """The branch this workspace's marker pins, if it pins one."""
@@ -550,8 +558,19 @@ def _write_control_file(directory: Path, name: str, expected: str) -> None:
 
 
 def named(config: Config, value: str) -> Workspace:
-    """Build a Workspace from a user-supplied name."""
-    return Workspace(names.normalize_workspace(value, config.project), config)
+    """Build a Workspace from a user-supplied name.
+
+    A bare name with no project to hold it names its project's default leaf,
+    pinned to DEFAULT_LEAF_BRANCH while it does not exist yet. An existing
+    one keeps the branch it was created on, whatever that was.
+    """
+    workspace = Workspace(
+        names.normalize_workspace(value, config.project), config
+    )
+    bare = "/" not in value.rstrip("/")
+    if config.project or not bare or workspace.exists():
+        return workspace
+    return workspace.pinned_to(DEFAULT_LEAF_BRANCH)
 
 
 def listing(config: Config) -> list[Workspace]:

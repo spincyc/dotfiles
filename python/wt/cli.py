@@ -36,6 +36,9 @@ Launch:
   wt droid telos/agent-sync       directory
   wt telos/agent-sync             Use $WT_AGENT (default claude)
   wt agent-sync                   A bare slug takes $WT_PROJECT
+  wt openhab                      Without it, a bare name is a project: its
+                                  only workspace, or a new openhab/main on
+                                  branch main
 
   --new                           Start a fresh session; without it a launch
                                   resumes the one this agent had here

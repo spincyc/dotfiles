@@ -518,7 +518,9 @@ class UnsavedWorkTest(TemporaryHome):
 class WorkspaceNameTest(TemporaryHome):
     """Names become directories and branch names, so they are refused early."""
 
-    def test_a_project_is_supplied_or_demanded(self) -> None:
+    def test_a_bare_name_is_a_slug_in_the_project_or_names_one(
+        self,
+    ) -> None:
         self.assertEqual(
             names.normalize_workspace("demo", "telos"), "telos/demo"
         )
@@ -533,9 +535,12 @@ class WorkspaceNameTest(TemporaryHome):
         self.assertEqual(
             names.normalize_workspace("demo/", "telos"), "telos/demo"
         )
-        with self.assertRaises(WtError) as raised:
-            names.normalize_workspace("demo", None)
-        self.assertIn("WT_PROJECT", raised.exception.message)
+        self.assertEqual(
+            names.normalize_workspace("openhab", None), "openhab/main"
+        )
+        self.assertEqual(
+            names.normalize_workspace("openhab/", None), "openhab/main"
+        )
 
     def test_a_revision_range_is_refused_at_creation_not_resolution(
         self,
@@ -723,6 +728,38 @@ class WorkspaceSelectionTest(TemporaryHome):
         )
         self.assertEqual(selected.name, "work/dotfiles")
         self.assertFalse(selected.exists())
+
+    def test_a_bare_new_project_opens_a_main_leaf_on_main(self) -> None:
+        self.make("dotfiles/main")
+        selected = workspaces.reuse_or_named(self.config, "openhab")
+        self.assertEqual(selected.name, "openhab/main")
+        self.assertFalse(selected.exists())
+        self.assertEqual(selected.branch, "main")
+        selected.create()
+        self.assertEqual(selected.recorded_branch(), "main")
+        reused = workspaces.reuse_or_named(self.config, "openhab")
+        self.assertEqual(
+            (reused.name, reused.branch), ("openhab/main", "main")
+        )
+
+    def test_a_named_branch_replaces_the_default_leaf_pin(self) -> None:
+        selected = workspaces.reuse_or_named(self.config, "openhab")
+        self.assertEqual(selected.pinned_to(None).branch, "main")
+        self.assertEqual(
+            selected.pinned_to("feature/hab").branch, "feature/hab"
+        )
+
+    def test_an_existing_main_leaf_keeps_its_own_branch(self) -> None:
+        # Made by its full name, it works on the derived branch. Reaching it
+        # by its bare project must not re-pin it, or create() refuses it.
+        self.make("openhab/main")
+        for abbreviate in (True, False):
+            with self.subTest(abbreviate=abbreviate):
+                selected = workspaces.reuse_or_named(
+                    self.config, "openhab", abbreviate=abbreviate
+                )
+                self.assertEqual(selected.branch, "feature/main")
+                self.assertFalse(selected.create())
 
     def test_general_similarity_does_not_capture_a_new_lane_name(self) -> None:
         config = Config(root=self.root / "lanes", project="work")

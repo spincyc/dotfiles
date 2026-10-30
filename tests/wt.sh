@@ -290,14 +290,34 @@ assert_contains "$(cat "$work/telos/demo/AGENTS.md")" \
 [ "$(wt_run branch telos/demo)" = "feature/demo" ] ||
   fail "branch reported the wrong workspace branch"
 
-printf '# a bare slug needs a project\n'
-if bare_out=$(wt_run new bare 2>&1); then
-  fail "a bare slug was accepted without WT_PROJECT"
-fi
-assert_contains "$bare_out" 'WT_PROJECT'
-[ ! -e "$work/feature/bare" ] || fail "a bare slug created a feature/ workspace"
+printf '# without WT_PROJECT, a bare name is a project opening main\n'
+wt_root="$test_root/projects"
+bare_out=$(wt_run new bare 2>/dev/null) ||
+  fail "a bare name was refused without WT_PROJECT"
+[ "$bare_out" = "$test_root/projects/bare/main" ] ||
+  fail "a bare name did not create its project's main leaf: $bare_out"
+[ "$(wt_run branch bare)" = "main" ] ||
+  fail "a project's main leaf was not pinned to main"
+[ ! -e "$test_root/projects/feature/bare" ] ||
+  fail "a bare name created a feature/ workspace"
+new_project=$(wt_run droid openhab 2>&1) ||
+  fail "a bare new project was not launched: $new_project"
+assert_contains "$new_project" "created  $test_root/projects/openhab/main"
+assert_contains "$new_project" 'agent=droid'
+assert_contains "$new_project" 'workspace=openhab/main'
+assert_contains "$new_project" 'branch=main'
+same_project=$(wt_run droid openhab 2>&1) ||
+  fail "a bare project was not relaunched: $same_project"
+assert_contains "$same_project" 'workspace=openhab/main'
+assert_missing "$same_project" 'created'
+pinned_project=$(wt_run droid -b work/hab hab 2>&1) ||
+  fail "a bare new project refused -b: $pinned_project"
+assert_contains "$pinned_project" 'workspace=hab/main'
+assert_contains "$pinned_project" 'branch=work/hab'
+wt_root="$work"
 wt_project=telos wt_run new bare >/dev/null 2>&1
 [ -d "$work/telos/bare" ] || fail "WT_PROJECT was not applied to a bare slug"
+[ ! -e "$work/bare" ] || fail "WT_PROJECT did not keep a bare slug a slug"
 
 printf '# the branch prefix is configurable\n'
 prefix_out=$(wt_branch_prefix=work wt_run branch telos/demo)

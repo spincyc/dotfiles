@@ -250,6 +250,7 @@ wt claude telos/agent-sync      # create or reuse the workspace, run claude in i
 wt codex telos/agent-sync       # the same workspace, a different agent
 wt droid telos/agent-sync       # and a third
 wt agent-sync                   # a bare slug takes $WT_PROJECT
+wt droid openhab                # without it, a bare name is a project
 ```
 
 The project only groups workspaces and names nothing on a forge; the
@@ -603,9 +604,12 @@ prefix (`tel/ag/repl-1`). Matching ignores case and the differences among
 leaf wins over a project of the same name. A short selector that matches more
 than one leaf is refused and prints every candidate, and so is a project that
 holds several workspaces. Commands that can create a workspace still create a
-selector that matches nothing. `wt new` infers neither prefixes nor projects,
-so use it when a deliberately new name is a prefix of an existing one or
-names a project.
+selector that matches nothing. Without `WT_PROJECT`, a bare name that matches
+nothing is a new project: `wt droid openhab` creates `openhab/main` on branch
+`main`, not `feature/main`, unless `-b` names another branch, and later
+launches select it as that project's only workspace. `wt new` infers neither
+prefixes nor projects, so use it when a deliberately new name is a prefix of
+an existing one or names a project.
 
 `wt sync` fetches and rebases each clone onto its default branch. `wt pull`
 is deliberately *not* an alias for it: `git pull --ff-only` never rewrote
@@ -692,7 +696,7 @@ names, matching `relay`'s own code for it.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `WT_ROOT` | `~/git/worktrees` | Workspace root |
-| `WT_PROJECT` | none | Project applied to a bare slug |
+| `WT_PROJECT` | none | Project applied to a bare slug; unset, a bare name is a project |
 | `WT_BRANCH_PREFIX` | `feature` | Prefix of the workspace branch |
 | `WT_AGENT` | `claude` | Agent used when none is named |
 | `WT_FORGE` | `https://github.com` | Base URL for `owner/repo` clones |

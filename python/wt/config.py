@@ -26,8 +26,9 @@ class Config:
     """Where workspaces live and how agents are launched."""
 
     root: Path
-    # A bare workspace name needs a project; there is no sensible default one,
-    # so it stays None until WT_PROJECT names it.
+    # The project a bare workspace name is a slug in. There is no sensible
+    # default one, so it stays None until WT_PROJECT names it, and until then
+    # a bare name is read as a project instead.
     project: str | None = None
     branch_prefix: str = DEFAULT_BRANCH_PREFIX
     agent: str = DEFAULT_AGENT

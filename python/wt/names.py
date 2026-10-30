@@ -21,6 +21,9 @@ RESERVED = frozenset({".", ".."})
 _REF_FORBIDDEN = frozenset(
     " ~^:?*[\\" + "".join(chr(code) for code in range(0x20)) + chr(0x7F)
 )
+# The leaf a bare name opens when no project claims it as a slug: the name is
+# then the project, so `wt droid openhab` means `openhab/main`.
+DEFAULT_LEAF = "main"
 
 
 def is_safe_component(value: str) -> bool:
@@ -62,16 +65,15 @@ def valid_branch(name: str) -> bool:
 
 
 def normalize_workspace(value: str, project: str | None) -> str:
-    """Turn a slug or stacked name into ``project/slug[/child...]``."""
+    """Turn a slug or stacked name into ``project/slug[/child...]``.
+
+    A bare name is a slug in `project` when there is one, and otherwise a
+    project, naming its DEFAULT_LEAF.
+    """
     trimmed = value.rstrip("/")
     parts = trimmed.split("/")
     if len(parts) == 1:
-        if not project:
-            raise WtError(
-                f"name the project: <project>/{trimmed} "
-                f"(or set WT_PROJECT)"
-            )
-        parts = [project, parts[0]]
+        parts = [project, parts[0]] if project else [parts[0], DEFAULT_LEAF]
     if len(parts) < 2 or not all(is_safe_component(part) for part in parts):
         raise WtError(f"not a usable workspace name: {value}")
     # Whether the name makes a usable *branch* is asked at creation, not
