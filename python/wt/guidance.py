@@ -44,10 +44,11 @@ vision needs a baseline pass of its own, make `baseline` another leaf beside
 the replay leaves.
 
 Existing leaves can be selected in `wt` commands by their full workspace
-name, full branch, slug stack without the project, unique final slug, or an
-unambiguous prefix of each component. Ambiguous selectors are refused and
-list their candidates. Prefer `$WT_WORKSPACE` and `$WT_BRANCH` in scripts;
-they always carry the canonical values for this leaf.
+name, full branch, slug stack without the project, unique final slug, the
+project name when it holds only that leaf, or an unambiguous prefix of each
+component. Ambiguous selectors are refused and list their candidates. Prefer
+`$WT_WORKSPACE` and `$WT_BRANCH` in scripts; they always carry the canonical
+values for this leaf.
 
 ## Commit to `{branch}`, in every repository
 

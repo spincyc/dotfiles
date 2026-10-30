@@ -98,7 +98,8 @@ feature/<slug>[/<child>...] ($WT_BRANCH_PREFIX plus the complete slug stack),
 unless -b named another branch when the workspace was created, which is then
 recorded in its .wt-workspace and is what every verb here means by "the
 workspace branch". Existing leaves may be selected by full name, branch, slug
-stack, unique leaf, or unambiguous component prefixes.
+stack, unique leaf, a project holding only that leaf, or unambiguous component
+prefixes.
 
 Verbs:
   ls [-q]                         List workspaces and the repos they hold;

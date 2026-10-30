@@ -595,13 +595,17 @@ wt tidy --dry-run telos/agent-sync      # what tidy would delete, ignored files 
 
 An existing workspace does not require an exact full-name spelling. `wt`
 accepts its full branch (`feature/agent-sync/replay-1`), its slug stack without
-the project (`agent-sync/replay-1`), a unique final slug (`replay-1`), or an
-unambiguous component prefix (`tel/ag/repl-1`). Matching ignores case and the
-differences among `-`, `_`, and `.`. Exact full workspace names win first; a
-short selector that matches more than one leaf is refused and prints every
-candidate. Commands that can create a workspace still create a selector that
-matches nothing, so use `wt new` when a deliberately new name is a prefix of
-an existing one.
+the project (`agent-sync/replay-1`), a unique final slug (`replay-1`), its
+project when that holds no other workspace (`telos`, so `wt droid dotfiles`
+reaches `dotfiles/main` without `WT_PROJECT`), or an unambiguous component
+prefix (`tel/ag/repl-1`). Matching ignores case and the differences among
+`-`, `_`, and `.`. Exact full workspace names win first, and an exact slug or
+leaf wins over a project of the same name. A short selector that matches more
+than one leaf is refused and prints every candidate, and so is a project that
+holds several workspaces. Commands that can create a workspace still create a
+selector that matches nothing. `wt new` infers neither prefixes nor projects,
+so use it when a deliberately new name is a prefix of an existing one or
+names a project.
 
 `wt sync` fetches and rebases each clone onto its default branch. `wt pull`
 is deliberately *not* an alias for it: `git pull --ff-only` never rewrote

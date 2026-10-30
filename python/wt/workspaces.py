@@ -721,7 +721,13 @@ def _aliases(workspace: Workspace) -> tuple[str, ...]:
 def _matches(
     config: Config, value: str, abbreviate: bool = True
 ) -> list[Workspace]:
-    """Existing workspaces selected by an exact alias or component prefix."""
+    """Existing workspaces selected by an exact alias or component prefix.
+
+    A bare name equal to a project selects every leaf in it, after the exact
+    aliases and before abbreviation: one leaf is a match, several are an
+    ambiguity worth listing. Like abbreviation it is an inference, so
+    `abbreviate=False` skips it.
+    """
     found = listing(config)
     wanted = value.rstrip("/")
     if not wanted:
@@ -761,6 +767,15 @@ def _matches(
         return sorted(canonical.values(), key=lambda workspace: workspace.name)
 
     wanted_parts = wanted.split("/")
+    if len(wanted_parts) == 1:
+        project = [
+            workspace
+            for workspace in found
+            if _selector_key(workspace.name)[0] == wanted_key[0]
+        ]
+        if project:
+            return project
+
     abbreviated = {
         workspace.name: workspace
         for workspace in found

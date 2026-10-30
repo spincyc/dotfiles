@@ -349,10 +349,24 @@ launch_stack=$(wt_run tel/high/rep-o 2>/dev/null)
 assert_contains "$launch_stack" 'workspace=telos/high-level-vision/replay-one'
 [ ! -e "$test_root/stacks/tel/high/rep-o" ] ||
   fail "launch created an abbreviation instead of reusing its workspace"
+printf '# a bare project selects its only workspace, without WT_PROJECT\n'
+project_launch=$(wt_run droid telos 2>&1) ||
+  fail "a project holding one workspace was not launched: $project_launch"
+assert_contains "$project_launch" 'agent=droid'
+assert_contains "$project_launch" \
+  'workspace=telos/high-level-vision/replay-one'
+[ "$(wt_run path telos)" = "$stacked" ] ||
+  fail "a project did not select its only workspace"
 wt_run new telos/high-level-vision/replay-two >/dev/null 2>&1
 [ "$(wt_run path replay-t)" = \
     "$test_root/stacks/telos/high-level-vision/replay-two" ] ||
   fail "a second replay did not stack under the same vision"
+if project_choice=$(wt_run droid telos 2>&1); then
+  fail "a project holding two workspaces was launched"
+fi
+assert_contains "$project_choice" 'ambiguous workspace telos'
+assert_contains "$project_choice" 'telos/high-level-vision/replay-one'
+assert_contains "$project_choice" 'telos/high-level-vision/replay-two'
 [ "$(wt_run ls -q)" = "telos/high-level-vision/replay-one
 telos/high-level-vision/replay-two" ] ||
   fail "a stack group was listed as a workspace"

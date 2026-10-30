@@ -679,6 +679,51 @@ class WorkspaceSelectionTest(TemporaryHome):
         self.assertIn("other/vision/replay-one", raised.exception.message)
         self.assertIn("telos/vision/replay-one", raised.exception.message)
 
+    def test_a_bare_project_selects_its_only_leaf(self) -> None:
+        workspace = self.make("dotfiles/main")
+        self.make("telos/agent-sync")
+        for selector in ("dotfiles", "DotFiles", "dotfiles/"):
+            with self.subTest(selector=selector):
+                self.assertEqual(
+                    workspaces.select(self.config, selector), workspace
+                )
+                self.assertEqual(
+                    workspaces.reuse_or_named(self.config, selector),
+                    workspace,
+                )
+
+    def test_a_project_holding_several_leaves_names_every_choice(
+        self,
+    ) -> None:
+        self.make("telos/agent-sync")
+        self.make("telos/vision/replay-one")
+        with self.assertRaises(WtError) as raised:
+            workspaces.reuse_or_named(self.config, "telos")
+        self.assertIn("ambiguous workspace telos", raised.exception.message)
+        self.assertIn("telos/agent-sync", raised.exception.message)
+        self.assertIn("telos/vision/replay-one", raised.exception.message)
+
+    def test_a_project_ranks_below_exact_aliases_and_above_prefixes(
+        self,
+    ) -> None:
+        # A leaf names its workspace; a project only implies one.
+        leaf = self.make("infra/telos")
+        self.make("telos/agent-sync")
+        self.assertEqual(workspaces.select(self.config, "telos"), leaf)
+        # A whole project name is not a prefix of some other leaf.
+        project = self.make("dotfiles/main")
+        self.make("infra/dotfiles-cleanup")
+        self.assertEqual(workspaces.select(self.config, "dotfiles"), project)
+
+    def test_new_does_not_infer_a_project(self) -> None:
+        self.make("dotfiles/main")
+        config = Config(root=self.config.root, project="work")
+        selected = workspaces.reuse_or_named(
+            config, "dotfiles", abbreviate=False
+        )
+        self.assertEqual(selected.name, "work/dotfiles")
+        self.assertFalse(selected.exists())
+
     def test_general_similarity_does_not_capture_a_new_lane_name(self) -> None:
         config = Config(root=self.root / "lanes", project="work")
         workspaces.named(config, "meridian-lane-2").create()
